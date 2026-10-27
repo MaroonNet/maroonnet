@@ -1,0 +1,5 @@
+# Mission database files. Never commit one: they can hold real positions of real people.
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.db
