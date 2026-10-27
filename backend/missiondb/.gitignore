@@ -1,17 +1,5 @@
-# backend/missiondb
-
 # Mission database files. Never commit one: they can hold real positions of real people.
 *.sqlite3
 *.sqlite3-wal
 *.sqlite3-shm
 *.db
-
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-build/
-dist/
-.venv/
-venv/
-.pytest_cache/
