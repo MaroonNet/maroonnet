@@ -11,6 +11,7 @@ spm gate-b                    Model B (terrain from NY finds) vs the ring on Ari
 spm fit --model model_a       fit a model and write models/<name>.json
 spm predict MODEL.json --ipp LON LAT --category hiker   probability raster + heatmap for one IPP
 spm fetch-dem LON_MIN LAT_MIN LON_MAX LAT_MAX           pre-download 3DEP tiles for offline use
+spm update PRED.tif --searched sectors.geojson          re-weight a raster after a search
 spm region LON_MIN LAT_MIN LON_MAX LAT_MAX              prebuild the terrain for an operating area
 spm holdout --source mapscore --frac 0.33 --seed N      freeze a test set (configs/holdout.yaml)
 """
@@ -71,6 +72,27 @@ def _builder(args, terrain: Path):
         cache_dir=terrain / "stacks",
         streams_gpkg=stream_files or None,
     )
+
+
+def _apply_searched(pred, paths):
+    """Multiply in the POD of each searched-area file (GeoJSON sectors or a POD GeoTIFF)."""
+    from spm.io.coverage import pod_from_geojson, pod_from_raster
+    from spm.models.update import apply_search, combine_pod
+
+    layers = []
+    for p in paths:
+        is_tif = p.suffix.lower() in (".tif", ".tiff")
+        layers.append(
+            pod_from_raster(p, pred.window) if is_tif else pod_from_geojson(p, pred.window)
+        )
+    pod = combine_pod(layers)
+    before = pred.p_outside
+    pred = apply_search(pred, pod)
+    print(
+        f"searched {float((pod > 0).mean()):.1%} of cells; "
+        f"outside this map {before:.1%} -> {pred.p_outside:.1%}"
+    )
+    return pred
 
 
 def _write_prediction(pred, stem, case, stack, extra):
@@ -200,6 +222,14 @@ def main(argv: list[str] | None = None) -> None:
     pr.add_argument("--lines", type=Path, nargs="*", default=None)
     pr.add_argument("--streams", type=Path, nargs="*", default=None)
     pr.add_argument("--out", type=Path, default=None, help="output stem; default predictions/<ts>")
+    pr.add_argument("--elapsed-h", type=float, default=None, help="hours since the IPP time")
+    pr.add_argument("--max-slope-deg", type=float, default=None, help="impassable above this")
+    pr.add_argument("--searched", type=Path, nargs="*", default=None, help="POD GeoJSON/GeoTIFF")
+
+    up = sub.add_parser("update", help="re-weight a prediction raster after a search")
+    up.add_argument("tif", type=Path, help="GeoTIFF from `spm predict` or an earlier update")
+    up.add_argument("--searched", type=Path, nargs="+", required=True, help="POD GeoJSON/GeoTIFF")
+    up.add_argument("--out", type=Path, default=None, help="output stem; default <tif stem>_u<N>")
 
     ho = sub.add_parser("holdout", help="draw and freeze the test set")
     ho.add_argument("--source", default="mapscore", help="cases of this source are split")
@@ -531,8 +561,47 @@ def main(argv: list[str] | None = None) -> None:
         pred.check()
         stem = args.out or ROOT / "predictions" / datetime.now().strftime("%Y%m%d-%H%M%S")
         extra = []
+        if args.elapsed_h is not None:
+            from spm.geodata.travel import travel_hours
+            from spm.io.raster import write_band
+            from spm.models.update import apply_time_cap
+
+            hours = travel_hours(
+                stack["dem"],
+                window.res,
+                window.rowcol(lon, lat),
+                stack["trail_mask"] if stack.has("trail_mask") else None,
+                args.max_slope_deg,
+            )
+            pred = apply_time_cap(pred, hours, args.elapsed_h)
+            reach = float((hours <= args.elapsed_h).mean())
+            print(f"travel-time cap at {args.elapsed_h:g} h: {reach:.0%} of cells reachable")
+            extra.append(
+                write_band(
+                    stem.with_name(stem.name + "_travel_h.tif"),
+                    window,
+                    np.where(np.isfinite(hours), hours, -1.0),
+                    "travel_hours_from_ipp",
+                    speed="Tobler 1993 hiking function, x0.6 off trail",
+                    unreachable=-1,
+                )
+            )
+        if args.searched:
+            pred = _apply_searched(pred, args.searched)
         pred.check()
         _write_prediction(pred, stem, case, stack, extra)
+
+    elif args.cmd == "update":
+        from spm.io.raster import read_geotiff
+        from spm.schema import Case, LonLat
+
+        pred, ipp = read_geotiff(args.tif)
+        pred = _apply_searched(pred, args.searched)
+        pred.check()
+        n = pred.model.count("+search")
+        stem = args.out or args.tif.with_name(f"{args.tif.stem.split('_u')[0]}_u{n}")
+        case = Case(case_id="live", source="cli", ipp=LonLat(*ipp), category="?") if ipp else None
+        _write_prediction(pred, stem, case, None, [])
 
     elif args.cmd == "holdout":
         pool = [c for c in load_cases(args.data) if c.source == args.source and c.ipp]
