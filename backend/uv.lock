@@ -685,9 +685,9 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "alembic", specifier = ">=1.13" },
+    { name = "alembic", specifier = ">=1.20" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.143.0" },
-    { name = "sqlmodel", specifier = ">=0.0.22" },
+    { name = "sqlmodel", specifier = ">=0.0.48" },
 ]
 
 [package.metadata.requires-dev]
