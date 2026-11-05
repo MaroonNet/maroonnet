@@ -3,6 +3,10 @@
 spm harmonize                 download source cases, validate, write data/cases/cases.csv
 spm evaluate                  score models with leave-one-out, write results/
 spm evaluate --models ring --res 5     reproduce MapScore's 5 m cells (slow, ~25M cells per case)
+spm osm-lines PBF             extract trails/roads/streams from an OSM extract (run once per region)
+spm nhd-lines GPKG            extract streams from a USGS NHD state GeoPackage (run once per region)
+spm fetch-dem LON_MIN LAT_MIN LON_MAX LAT_MAX           pre-download 3DEP tiles for offline use
+spm region LON_MIN LAT_MIN LON_MAX LAT_MAX              prebuild the terrain for an operating area
 spm holdout --source mapscore --frac 0.33 --seed N      freeze a test set (configs/holdout.yaml)
 """
 
@@ -44,6 +48,24 @@ def _factories(names: list[str], quantiles_path: Path) -> dict:
     return out
 
 
+def _builder(args, terrain: Path):
+    """StackBuilder over every region's line files (needs the [geo] extras)."""
+    from spm.geodata.build import StackBuilder
+
+    line_files = args.lines or sorted(terrain.glob("osm_lines*.gpkg"))
+    stream_files = args.streams
+    if stream_files is None:
+        stream_files = sorted(terrain.glob("nhd_lines*.gpkg"))
+    print("lines:", ", ".join(p.name for p in line_files))
+    print("streams:", ", ".join(p.name for p in stream_files) or "from the lines files")
+    return StackBuilder(
+        line_files,
+        tile_dir=terrain / "dem_tiles",
+        cache_dir=terrain / "stacks",
+        streams_gpkg=stream_files or None,
+    )
+
+
 def _named(model, name):
     model.name = name
     return model
@@ -64,13 +86,38 @@ def main(argv: list[str] | None = None) -> None:
     e.add_argument("--quantiles", type=Path, default=ROOT / "configs" / "ring_quantiles.yaml")
     e.add_argument("--out", type=Path, default=ROOT / "results")
 
+    o = sub.add_parser("osm-lines", help="extract trails/roads/streams from an OSM .pbf")
+    o.add_argument("pbf", type=Path)
+    o.add_argument("--out", type=Path, default=None, help="default: data/terrain/osm_lines.gpkg")
+
+    nh = sub.add_parser("nhd-lines", help="extract streams from an unzipped NHD state GeoPackage")
+    nh.add_argument("nhd", type=Path)
+    nh.add_argument("--out", type=Path, default=None, help="default: data/terrain/nhd_lines.gpkg")
+    nh.add_argument(
+        "--exclude-fcode", type=int, nargs="*", default=[], help="e.g. 46007 ephemeral washes"
+    )
+
     ho = sub.add_parser("holdout", help="draw and freeze the test set")
     ho.add_argument("--source", default="mapscore", help="cases of this source are split")
     ho.add_argument("--frac", type=float, default=1 / 3)
     ho.add_argument("--seed", type=int, required=True)
     ho.add_argument("--force", action="store_true", help="redraw an existing holdout")
 
+    rg = sub.add_parser("region", help="prebuild the 10 m terrain stack for an operating area")
+    rg.add_argument(
+        "bbox", type=float, nargs=4, metavar=("LON_MIN", "LAT_MIN", "LON_MAX", "LAT_MAX")
+    )
+    rg.add_argument("--feature-res", type=float, default=10.0)
+    rg.add_argument("--lines", type=Path, nargs="*", default=None)
+    rg.add_argument("--streams", type=Path, nargs="*", default=None)
+
+    fd = sub.add_parser("fetch-dem", help="download 3DEP tiles covering a lon/lat box")
+    fd.add_argument(
+        "bbox", type=float, nargs=4, metavar=("LON_MIN", "LAT_MIN", "LON_MAX", "LAT_MAX")
+    )
+
     args = ap.parse_args(argv)
+    terrain = args.data / "terrain"
 
     if args.cmd == "harmonize":
         df, issues = harmonize(args.data, download=not args.no_download)
@@ -96,6 +143,20 @@ def main(argv: list[str] | None = None) -> None:
             print(summary.to_string(index=False))
         print(f"\nwritten to {args.out}/")
 
+    elif args.cmd == "osm-lines":
+        from spm.geodata import lines  # needs the [geo] extras
+
+        out = args.out or terrain / "osm_lines.gpkg"
+        n = lines.extract(args.pbf, out)
+        print(f"wrote {n} lines -> {out}")
+
+    elif args.cmd == "nhd-lines":
+        from spm.geodata import lines  # needs the [geo] extras
+
+        out = args.out or terrain / "nhd_lines.gpkg"
+        n = lines.extract_nhd(args.nhd, out, tuple(args.exclude_fcode))
+        print(f"wrote {n} stream lines -> {out}")
+
     elif args.cmd == "holdout":
         pool = [c for c in load_cases(args.data) if c.source == args.source and c.ipp]
         ids = make_holdout(pool, args.frac, args.seed)
@@ -103,6 +164,28 @@ def main(argv: list[str] | None = None) -> None:
             ROOT / HOLDOUT_PATH, ids, args.source, args.frac, args.seed, args.force
         )
         print(f"{len(ids)} of {len(pool)} {args.source} cases frozen as the test set -> {path}")
+
+    elif args.cmd == "region":
+        import time
+
+        builder = _builder(args, terrain)
+        t = time.time()
+        stack = builder.region(tuple(args.bbox), args.feature_res)
+        w = stack.window
+        mb = sum(v.nbytes for v in stack.layers.values()) / 1e6
+        print(
+            f"region stack {w.n}x{w.n} at {w.res:g} m ({w.n * w.res / 1000:.1f} km), "
+            f"{mb:.0f} MB in memory, built in {time.time() - t:.0f}s -> "
+            f"{terrain / 'stacks' / 'regions'}/"
+        )
+
+    elif args.cmd == "fetch-dem":
+        from spm.geodata import dem
+
+        names = dem.tiles_for_bounds(*args.bbox)
+        print(f"{len(names)} tiles -> {terrain / 'dem_tiles'}")
+        for p in dem.fetch_tiles(names, terrain / "dem_tiles"):
+            print(f"  {p.name} {p.stat().st_size / 1e6:.0f} MB")
 
 
 if __name__ == "__main__":
