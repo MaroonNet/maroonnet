@@ -5,6 +5,9 @@ spm evaluate                  score models with leave-one-out, write results/
 spm evaluate --models ring --res 5     reproduce MapScore's 5 m cells (slow, ~25M cells per case)
 spm osm-lines PBF             extract trails/roads/streams from an OSM extract (run once per region)
 spm nhd-lines GPKG            extract streams from a USGS NHD state GeoPackage (run once per region)
+spm stacks --source nysdec    build and cache terrain stacks around each case
+spm evaluate-terrain          leave-one-region-out terrain models on find-only cases (NYS DEC)
+spm gate-b                    Model B (terrain from NY finds) vs the ring on Arizona
 spm fetch-dem LON_MIN LAT_MIN LON_MAX LAT_MAX           pre-download 3DEP tiles for offline use
 spm region LON_MIN LAT_MIN LON_MAX LAT_MAX              prebuild the terrain for an operating area
 spm holdout --source mapscore --frac 0.33 --seed N      freeze a test set (configs/holdout.yaml)
@@ -16,12 +19,13 @@ import argparse
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import yaml
 
 from spm.cases.harmonize import harmonize, load_cases
 from spm.cases.split import DEFAULT_PATH as HOLDOUT_PATH
-from spm.cases.split import make_holdout, write_holdout
+from spm.cases.split import load_holdout, make_holdout, partition, write_holdout
 from spm.eval.runner import evaluate, summarize
 from spm.features.spec import load_specs
 from spm.models import REGISTRY, RingModel
@@ -97,6 +101,47 @@ def main(argv: list[str] | None = None) -> None:
         "--exclude-fcode", type=int, nargs="*", default=[], help="e.g. 46007 ephemeral washes"
     )
 
+    s = sub.add_parser("stacks", help="build + cache the terrain stacks HybridModel will request")
+    s.add_argument("--source", default=None, help="only cases from this adapter")
+    s.add_argument("--lines", type=Path, nargs="*", default=None, help="default: osm_lines*.gpkg")
+    s.add_argument("--streams", type=Path, nargs="*", default=None, help="default: nhd_lines*.gpkg")
+    s.add_argument("--res", type=float, default=100.0, help="model cell size, metres")
+    s.add_argument("--feature-res", default="10", help="sub-cell feature size, metres, or none")
+    s.add_argument("--side", type=float, default=25_000.0, help="IPP window side, metres")
+    s.add_argument("--radius", type=float, default=1000.0, help="find disc radius (find-only)")
+    s.add_argument("--limit", type=int, default=None, help="build at most this many")
+
+    et = sub.add_parser("evaluate-terrain", help="region holdout on find-only cases")
+    et.add_argument("--source", default="nysdec")
+    et.add_argument("--situation", default="Lost", help="NYS DEC situation; 'all' for every one")
+    et.add_argument("--feature-res", default="none,10", help="models to compare, e.g. none,10")
+    et.add_argument("--radius", type=float, default=1000.0, help="find disc radius, metres")
+    et.add_argument("--lines", type=Path, nargs="*", default=None, help="default: osm_lines*.gpkg")
+    et.add_argument("--streams", type=Path, nargs="*", default=None, help="default: nhd_lines*")
+    et.add_argument("--out", type=Path, default=ROOT / "results")
+
+    g = sub.add_parser("gate-b", help="terrain weights from one source, scored on another")
+    g.add_argument("--train-source", default="nysdec")
+    g.add_argument("--train-situation", default="Lost")
+    g.add_argument("--test-source", default="mapscore")
+    g.add_argument("--res", type=float, default=100.0, help="model and scoring cell size")
+    g.add_argument("--feature-res", type=float, default=10.0)
+    g.add_argument("--radius", type=float, default=1000.0, help="find disc radius for training")
+    g.add_argument(
+        "--drop", nargs="*", default=[], metavar="FEATURE", help="leave these features out of B"
+    )
+    g.add_argument("--lam-w", type=float, default=1.0, help="L2 pull of weights toward prior")
+    g.add_argument(
+        "--lam-region",
+        type=float,
+        default=300.0,
+        help="L2 pull of region corrections toward 0 (300: 5-fold CV on the 71 AZ "
+        "training cases, 2026-11-05; the Arizona cases help through the shared weights)",
+    )
+    g.add_argument("--lines", type=Path, nargs="*", default=None, help="default: osm_lines*")
+    g.add_argument("--streams", type=Path, nargs="*", default=None, help="default: nhd_lines*")
+    g.add_argument("--out", type=Path, default=ROOT / "results")
+
     ho = sub.add_parser("holdout", help="draw and freeze the test set")
     ho.add_argument("--source", default="mapscore", help="cases of this source are split")
     ho.add_argument("--frac", type=float, default=1 / 3)
@@ -156,6 +201,185 @@ def main(argv: list[str] | None = None) -> None:
         out = args.out or terrain / "nhd_lines.gpkg"
         n = lines.extract_nhd(args.nhd, out, tuple(args.exclude_fcode))
         print(f"wrote {n} stream lines -> {out}")
+
+    elif args.cmd == "stacks":
+        from spm.models.hybrid import HybridModel
+
+        builder = _builder(args, terrain)
+        fr = None if args.feature_res.strip().lower() == "none" else float(args.feature_res)
+        shape = HybridModel(
+            [], builder, side_m=args.side, res=args.res, find_radius_m=args.radius, feature_res=fr
+        )
+        cases = [c for c in load_cases(args.data) if args.source in (None, c.source)]
+        built = 0
+        for c in cases[: args.limit]:
+            window = shape.stack_window(c)
+            if window is None:
+                continue
+            stack = builder(c, window)
+            dem_ok = float(np.isfinite(stack["dem"]).mean())
+            print(
+                f"{c.case_id}: {window.n}x{window.n} at {window.res:g} m, dem {dem_ok:.0%}, "
+                + ", ".join(f"{k} {int(stack[k].sum())}" for k in stack.layers if k != "dem")
+            )
+            built += 1
+        print(f"\n{built} stacks in {terrain / 'stacks'}/")
+
+    elif args.cmd == "evaluate-terrain":
+        from spm.eval.find_only import by_region, leave_one_region_out, paired_summary
+        from spm.models.hybrid import HybridModel
+
+        builder = _builder(args, terrain)
+        specs = load_specs(ROOT / "configs" / "prior_art.yaml")
+        cases = [
+            c
+            for c in load_cases(args.data)
+            if c.source == args.source
+            and c.ipp is None
+            and args.situation in ("all", c.extra.get("situation"))
+        ]
+        models = {}
+        for fr in args.feature_res.split(","):
+            feature_res = None if fr.strip().lower() == "none" else float(fr)
+            name = "hybrid" if feature_res is None else f"hybrid_{feature_res:g}m"
+            models[name] = lambda feature_res=feature_res: HybridModel(
+                specs, builder, find_radius_m=args.radius, feature_res=feature_res
+            )
+        print(f"{len(cases)} find-only cases")
+        per_case = leave_one_region_out(models, cases)
+        summary = paired_summary(per_case)
+        regions = by_region(per_case)
+        args.out.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M")
+        per_case.to_csv(args.out / f"terrain_scores_{stamp}.csv", index=False)
+        summary.to_csv(args.out / f"terrain_summary_{stamp}.csv", index=False)
+        with pd.option_context("display.width", 140):
+            print(summary.to_string(index=False))
+            print("\nmean log-lik gain over uniform, by held-out region:")
+            print(regions.to_string())
+        print(f"\nwritten to {args.out}/")
+
+    elif args.cmd == "gate-b":
+        from spm.eval.runner import paired
+        from spm.features import aggregate
+        from spm.models.hybrid import HybridModel
+
+        builder = _builder(args, terrain)
+        specs = load_specs(ROOT / "configs" / "prior_art.yaml")
+        filled = ", ".join(s.name for s in specs if s.prior_complete and s.published)
+        print(f"Model A (published features only): {filled or 'none'}")
+        held_ids = load_holdout(ROOT / HOLDOUT_PATH)
+        cases, held = partition(load_cases(args.data), held_ids)
+        train = [
+            c
+            for c in cases
+            if c.source == args.train_source
+            and c.ipp is None
+            and args.train_situation in ("all", c.extra.get("situation"))
+        ]
+        ipp_train = [c for c in cases if c.source == args.test_source and c.ipp is not None]
+        if held:
+            test = [c for c in held if c.source == args.test_source and c.ipp is not None]
+            print(
+                f"frozen test set: {len(test)} {args.test_source} cases; "
+                f"{len(ipp_train)} {args.test_source} cases trainable"
+            )
+        else:
+            test, ipp_train = ipp_train, []
+            print("no configs/holdout.yaml: leave-one-out over all IPP cases (no AZ training)")
+        print(f"terrain trained on {len(train)} {args.train_source} finds")
+
+        def terrain_model(name, use, extra=()):
+            m = HybridModel(
+                [s for s in specs if s.name in use],
+                builder,
+                res=args.res,
+                find_radius_m=args.radius,
+                feature_res=args.feature_res,
+                lam_w=args.lam_w,
+                lam_region=args.lam_region,
+            ).fit(train + list(extra))
+            for f, mult in m.multipliers().items():
+                print(f"  {name} {f}: {np.round(mult / mult[-1], 2)}")
+            return m.frozen(name)
+
+        names = {s.name for s in specs} - set(args.drop)
+        if args.drop:
+            print(f"Model B without: {', '.join(args.drop)}")
+        primary = terrain_model("hybrid_ny", names)
+        secondary = terrain_model("hybrid_ny_nostream", names - {"dist_stream_m"})
+        with_az = terrain_model("hybrid_ny_az", names, extra=ipp_train) if ipp_train else None
+        if with_az is not None:
+            delta_az = np.round(with_az.delta.get("US-AZ", 0), 2)
+            print(f"  hybrid_ny_az region correction US-AZ: {delta_az}")
+        models = {
+            "ring": RingModel,
+            # Model A: the published model. Published features only, no cap, ring refitted.
+            "model_a": lambda: BayesModel(
+                specs, stack_provider=builder, feature_res=args.feature_res
+            ),
+            "hybrid_ny": primary.frozen,
+            "hybrid_ny_nostream": secondary.frozen,
+        }
+        if with_az is not None:
+            models["hybrid_ny_az"] = with_az.frozen
+
+        def stacks(case, window):  # the fine stack HybridModel will ask for (cached)
+            return builder(case, aggregate.fine_window(window, args.feature_res)[0])
+
+        per_case = evaluate(
+            models,
+            test,
+            split="loo",
+            res=args.res,
+            stack_provider=stacks,
+            fixed_train=ipp_train if held else None,
+        )
+        pairs = [
+            ("model_a", "ring"),
+            ("hybrid_ny", "ring"),
+            ("hybrid_ny_nostream", "ring"),
+            ("hybrid_ny", "model_a"),
+        ]
+        if with_az is not None:
+            pairs += [
+                ("hybrid_ny_az", "ring"),
+                ("hybrid_ny_az", "model_a"),
+                ("hybrid_ny_az", "hybrid_ny"),
+            ]
+        rows = [
+            paired(per_case, m, base, metric)
+            for m, base in pairs
+            for metric in ("mapscore", "log_p_find")
+        ]
+        result = pd.DataFrame(rows).round(3)
+        args.out.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M")
+        per_case.to_csv(args.out / f"gate_b_scores_{stamp}.csv", index=False)
+        result.to_csv(args.out / f"gate_b_paired_{stamp}.csv", index=False)
+        with pd.option_context("display.width", 140):
+            print(summarize(per_case).to_string(index=False))
+            print("\npaired per-case differences:")
+            print(result.to_string(index=False))
+
+        def verdict(model, base):
+            g = result[
+                (result["model"] == model)
+                & (result["baseline"] == base)
+                & (result["metric"] == "mapscore")
+            ].iloc[0]
+            v = "PASS" if g["ci95_low"] > 0 else "FAIL" if g["ci95_high"] < 0 else "INCONCLUSIVE"
+            ci = f"CI {g['ci95_low']:+.3f} to {g['ci95_high']:+.3f}"
+            return f"{model} vs {base}: {v} ({g['mean_diff']:+.3f}, {ci})"
+
+        print("\nGate B, paired MapScore, 95% CI must exclude 0:")
+        if with_az is not None:
+            print("  roadmap gate  " + verdict("hybrid_ny_az", "model_a") + "  [B: NY + AZ train]")
+            print("  AZ data helps " + verdict("hybrid_ny_az", "hybrid_ny"))
+        print("  NY-only B     " + verdict("hybrid_ny", "model_a"))
+        print("  vs ring       " + verdict("hybrid_ny", "ring"))
+        print("  Model A       " + verdict("model_a", "ring"))
+        print(f"written to {args.out}/")
 
     elif args.cmd == "holdout":
         pool = [c for c in load_cases(args.data) if c.source == args.source and c.ipp]
