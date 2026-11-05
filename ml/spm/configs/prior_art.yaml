@@ -1,0 +1,109 @@
+# Published terrain multipliers for the prior-art (Model A) and the priors of the hybrid (Model B).
+#
+# Each feature is cut into bins by `edges` (len(edges)+1 bins; the last bin is open-ended).
+# `multipliers` is a point multiplier per bin: how much more (>1) or less (<1) likely a find is
+# at a point in that bin than at a point in average terrain. Models use only the ratios between
+# bins (softmax), so the last bin's value is the reference.
+#
+# `published: false` marks a feature whose VALUES are published but whose definition (bins,
+# neighbourhood) is ours. Model A, the published model, never uses those and is never capped
+# or tuned, so Model B competes against what is in the field today. Model B uses every
+# filled entry as a prior and learns from there.
+#
+# DO NOT invent values. Every filled list needs `source` with page/table.
+#
+# Source for the linear features: Jacobs, M. (2015), "Terrain Based Probability Models for SAR",
+# Mountain Rescue Association, https://mra.org/wp-content/uploads/2016/05/TerrainProbabilityModelsReport.pdf
+# (self-published report, not peer reviewed; 622 backcountry foot incidents, 75% Oregon, rest
+# New York and Arizona, p. 10). PDEN = (% of finds) / (% of uniform sample points) within a 2 km
+# circle around each find (pp. 4-5); PDEN 1 = random terrain.
+#
+# How the numbers are used here, and the three judgement calls the team should confirm:
+#
+# 1. Jacobs reports CUMULATIVE offsets ("within 40 m"), not bands, so each linear feature has a
+#    single edge at his main offset: within / beyond. Band values (20-50 m, 50-100 m, ...) cannot be
+#    derived from the report. This also fixes Model B's bins (same bins for A and B); the earlier
+#    six-band version lives in git history if finer learned bins are wanted later.
+# 2. The "beyond" bin is set to 1.0. Jacobs' PDEN is relative to random terrain, so terrain beyond
+#    the offset actually has PDEN < 1 and the true within/beyond ratio is larger than the number
+#    shown. Converting needs the area share within the offset, which Jacobs does not publish for
+#    these offsets. Entered as published; the understatement is documented, not corrected.
+# 3. Uninjured values are used. Jacobs pools injured and DOA as "injured" (p. 10); searches were
+#    81% well, 9% injured, 10% DOA (p. 10). Injured values are given in each comment. Status is
+#    unknown at prediction time; a mixture by status is a later option.
+#
+# Jacobs' own caveat (p. 28): Table 1 "should be used as a rough guide only, and not as the basis
+# for detailed calculations." The per-offset values below come from the results text, which gives
+# standard errors; Table 1 (p. 28) rounds them (roads 3x/1.5x, trails 5x/7x, streams 2x/3.5x).
+
+features:
+  dist_trail_m:
+    # within 40 m of a trail / beyond
+    edges: [40]
+    multipliers: [5.5, 1.0]
+    source: >-
+      Jacobs 2015 p. 13: uninjured trail PDEN 8+-1 at 20 m cumulative offset, 5.5+-0.5 at 40 m;
+      Table 1 p. 28: trails 5x uninjured, 7x injured. Trail data: OSM + USFS (Jacobs); here OSM.
+
+  dist_road_m:
+    # within 40 m of a road / beyond
+    edges: [40]
+    multipliers: [3.0, 1.0]
+    source: >-
+      Jacobs 2015 p. 13: uninjured road PDEN 4.5+-0.4 at 20 m, 3+-0.2 within 40 m; injured
+      1.5+-0.3 at 40 m (p = .02). Table 1 p. 28: roads 3x uninjured, 1.5x injured.
+
+  dist_stream_m:
+    # within 80 m of a stream / beyond. Jacobs' "stream" = NHD flowline with Strahler order >= 5;
+    # smaller flowlines ("capillaries") had lower PDEN (p. 18). This repo's NHD extract has no
+    # Strahler order and includes every StreamRiver flowline, so the match to his definition is
+    # approximate and the value likely overstates the effect for small streams.
+    edges: [80]
+    multipliers: [1.8, 1.0]
+    source: >-
+      Jacobs 2015 p. 18: uninjured stream PDEN 2.2+-0.3 at 40 m track offset, 1.8+-0.2 at 80 m;
+      injured 3.4+-0.4 at 80 m. Table 1 p. 28: streams 2x uninjured, 3.5x injured.
+
+  # interface_m (within 80 m of both a trail and a stream; Jacobs p. 19, 7.5x/13x) was tried
+  # on 2026-11-04 and left out: once the trail and stream multipliers are in, it learns ~1.07x
+  # and the NY region holdout gets slightly worse (-0.003 nats/find). features/relative.py
+  # still computes it.
+
+  elev_pos:
+    # position in the local relief within ~1 km: < 0.2 low ground, 0.2-0.8 mid, >= 0.8 high.
+    # Jacobs pp. 20-21: percentile-basis elevation < 0.2 had uninjured PDEN 1.9+-0.2 (injured
+    # 3.5+-0.4; 5.3+-1 below 0.1); high points 1.6+-0.3 uninjured (2.1+-0.6 injured); Table 1
+    # p. 28 rounds these to 2x and 1.5x. Jacobs measured percentiles in a 2 km circle; this
+    # feature is min-max position in a 1 km square, and the 0.8 high cut-off mirrors his 0.2
+    # low cut-off (his high-point threshold is not stated in the text).
+    # Checked on 1,100 NYS DEC Lost finds (2026-11-04): find density vs area is 1.25x low,
+    # 0.85x mid, 1.77x high, so the direction matches Jacobs; adding the feature gains
+    # +0.008 nats/find for Model A and +0.009 for Model B, both with CIs that include zero.
+    # Model B only (published: false): Jacobs' values, our thresholds and neighbourhood.
+    published: false
+    edges: [0.2, 0.8]
+    multipliers: [1.9, 1.0, 1.6]
+    source: "Jacobs 2015 pp. 20-21 (low points 1.9x, high points 1.6x, uninjured); Table 1 p. 28"
+
+  elev_change_m:
+    # Left blank on purpose. Jacobs p. 27: elevation change from the IPP "was not found to be a
+    # useful predictor beyond its established use in distance based models."
+    edges: [-300, -100, -30, 30, 100, 300]
+    multipliers: null
+    source: "Jacobs 2015 p. 27 (null result); Koester 2008 elevation tables not consulted"
+
+  same_watershed:
+    # bin 0 = different watershed, bin 1 = IPP's watershed. Blank: Sava et al. 2016 Table 2
+    # (p. 11) gives find COUNTS by watersheds-away (Arizona n=122: 57/46/7/12 for 0/1/2/3+), not
+    # a density multiplier; converting needs the watershed areas. Also no watershed layer is
+    # built yet.
+    edges: [0.5]
+    multipliers: null
+    source: "Sava, Twardy, Koester & Sonwalkar 2016, Table 2 p. 11 (counts only)"
+
+# Not representable with the current features (listed so nobody re-searches for them):
+#   Stream/trail interface (within 80 m of both): 7.5+-1.4 uninjured, 13+-3 injured (Jacobs p. 19)
+#   Low points (percentile-basis elevation < 0.2 in the 2 km circle): 1.9+-0.2 / 3.5+-0.4 (p. 21)
+#   High points: 1.6+-0.3 / 2.1+-0.6 (p. 21)      Lakes within 40 m: 2.2+-0.4, n=25 (p. 17)
+#   Convergent terrain (TCI > 0.95): 1.4+-0.3 / 2.9+-0.6 (p. 25)
+# tpi_m exists as a feature but is not Jacobs' percentile-basis elevation; do not map one to the other.
