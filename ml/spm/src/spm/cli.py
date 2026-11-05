@@ -8,6 +8,8 @@ spm nhd-lines GPKG            extract streams from a USGS NHD state GeoPackage (
 spm stacks --source nysdec    build and cache terrain stacks around each case
 spm evaluate-terrain          leave-one-region-out terrain models on find-only cases (NYS DEC)
 spm gate-b                    Model B (terrain from NY finds) vs the ring on Arizona
+spm fit --model model_a       fit a model and write models/<name>.json
+spm predict MODEL.json --ipp LON LAT --category hiker   probability raster + heatmap for one IPP
 spm fetch-dem LON_MIN LAT_MIN LON_MAX LAT_MAX           pre-download 3DEP tiles for offline use
 spm region LON_MIN LAT_MIN LON_MAX LAT_MAX              prebuild the terrain for an operating area
 spm holdout --source mapscore --frac 0.33 --seed N      freeze a test set (configs/holdout.yaml)
@@ -28,6 +30,7 @@ from spm.cases.split import DEFAULT_PATH as HOLDOUT_PATH
 from spm.cases.split import load_holdout, make_holdout, partition, write_holdout
 from spm.eval.runner import evaluate, summarize
 from spm.features.spec import load_specs
+from spm.geodata.grid import Window
 from spm.models import REGISTRY, RingModel
 from spm.models.bayes import BayesModel
 
@@ -68,6 +71,22 @@ def _builder(args, terrain: Path):
         cache_dir=terrain / "stacks",
         streams_gpkg=stream_files or None,
     )
+
+
+def _write_prediction(pred, stem, case, stack, extra):
+    from spm.io.raster import write_geotiff, write_heatmap_png, write_web_overlay
+
+    ipp = (case.ipp.lon, case.ipp.lat) if case and case.ipp else None
+    tif = write_geotiff(pred, stem.with_suffix(".tif"), ipp=ipp)
+    png = write_heatmap_png(pred, stem.with_suffix(".png"), case=case, stack=stack)
+    overlay = stem.with_name(stem.name + "_overlay")
+    web = write_web_overlay(pred, overlay.with_suffix(".png"), overlay.with_suffix(".json"))
+    flagged = 0.0 if pred.flags is None else float(pred.flags.mean())
+    w = pred.window
+    print(f"{pred.model} v{pred.model_version}: {w.n}x{w.n} at {w.res:g} m")
+    print(f"outside this map: {pred.p_outside:.1%}; out-of-range cells: {flagged:.1%}")
+    for p in (tif, png, web, web.with_suffix(".json"), *extra):
+        print(f"  {p}")
 
 
 def _named(model, name):
@@ -141,6 +160,46 @@ def main(argv: list[str] | None = None) -> None:
     g.add_argument("--lines", type=Path, nargs="*", default=None, help="default: osm_lines*")
     g.add_argument("--streams", type=Path, nargs="*", default=None, help="default: nhd_lines*")
     g.add_argument("--out", type=Path, default=ROOT / "results")
+
+    f = sub.add_parser("fit", help="fit a model and write it as JSON")
+    f.add_argument("--model", default="model_a", choices=["model_a", "hybrid"])
+    f.add_argument("--train-source", default="nysdec", help="find-only source for terrain weights")
+    f.add_argument("--train-situation", default="Lost")
+    f.add_argument("--ring-source", default="mapscore", help="IPP cases the ring is fitted on")
+    f.add_argument("--res", type=float, default=100.0)
+    f.add_argument("--feature-res", type=float, default=10.0)
+    f.add_argument("--radius", type=float, default=1000.0)
+    f.add_argument(
+        "--drop", nargs="*", default=[], metavar="FEATURE", help="leave these features out of B"
+    )
+    f.add_argument("--lam-w", type=float, default=1.0, help="L2 pull of weights toward prior")
+    f.add_argument(
+        "--lam-region",
+        type=float,
+        default=300.0,
+        help="L2 pull of region corrections toward 0 (300: 5-fold CV on the 71 AZ "
+        "training cases, 2026-11-05; the Arizona cases help through the shared weights)",
+    )
+    f.add_argument("--lines", type=Path, nargs="*", default=None)
+    f.add_argument("--streams", type=Path, nargs="*", default=None)
+    f.add_argument("--out", type=Path, default=None, help="default: models/<model>.json")
+
+    pr = sub.add_parser("predict", help="probability raster + heatmap for one IPP")
+    pr.add_argument("model", type=Path, help="model JSON from `spm fit`")
+    pr.add_argument("--ipp", type=float, nargs=2, metavar=("LON", "LAT"), required=True)
+    pr.add_argument("--category", default="hiker")
+    pr.add_argument("--region", default=None, help="region code for Model B's correction")
+    pr.add_argument("--side", type=float, default=25_000.0, help="window side, metres")
+    pr.add_argument(
+        "--res",
+        type=float,
+        default=20.0,
+        help="output cell size, metres (the model's weights are point multipliers, so any "
+        "multiple of its feature resolution works; training used 100)",
+    )
+    pr.add_argument("--lines", type=Path, nargs="*", default=None)
+    pr.add_argument("--streams", type=Path, nargs="*", default=None)
+    pr.add_argument("--out", type=Path, default=None, help="output stem; default predictions/<ts>")
 
     ho = sub.add_parser("holdout", help="draw and freeze the test set")
     ho.add_argument("--source", default="mapscore", help="cases of this source are split")
@@ -380,6 +439,100 @@ def main(argv: list[str] | None = None) -> None:
         print("  vs ring       " + verdict("hybrid_ny", "ring"))
         print("  Model A       " + verdict("model_a", "ring"))
         print(f"written to {args.out}/")
+
+    elif args.cmd == "fit":
+        from spm.io.artifact import save_model
+        from spm.models.hybrid import HybridModel
+
+        builder = _builder(args, terrain)
+        specs = load_specs(ROOT / "configs" / "prior_art.yaml")
+        q = (yaml.safe_load((ROOT / "configs" / "ring_quantiles.yaml").read_text()) or {}).get(
+            "categories"
+        ) or {}
+        q = {k: v for k, v in q.items() if v and all(v.get(x) for x in ("q25", "q50", "q75"))}
+        cases, held = partition(load_cases(args.data), load_holdout(ROOT / HOLDOUT_PATH))
+        if held:
+            print(f"holdout: {len(held)} frozen test cases excluded from every fit")
+        ring_cases = [c for c in cases if c.source == args.ring_source and c.ipp is not None]
+        ring = RingModel(quantiles=q)
+        if args.model == "model_a":
+            model = BayesModel(
+                specs, prior=ring, stack_provider=builder, feature_res=args.feature_res
+            ).fit(ring_cases)
+            train_n = 0
+        else:
+            train = [
+                c
+                for c in cases
+                if c.source == args.train_source
+                and c.ipp is None
+                and args.train_situation in ("all", c.extra.get("situation"))
+            ]
+            model = HybridModel(
+                [s for s in specs if s.name not in set(args.drop)],
+                builder,
+                prior=ring,
+                res=args.res,
+                find_radius_m=args.radius,
+                feature_res=args.feature_res,
+                lam_w=args.lam_w,
+                lam_region=args.lam_region,
+            )
+            model.prior.fit(ring_cases)  # the ring comes from IPP cases, not find-only ones
+            # find-only cases (no ring) plus the trainable IPP cases (ring strata, region delta)
+            model.fit_strata(model.strata(train + ring_cases))
+            train_n = model.n_train
+            for name, mult in model.multipliers().items():
+                print(f"  {name}: {np.round(mult / mult[-1], 2)}")
+            print(f"  cap on stacked multipliers: {np.exp(model.max_logm):.1f}x")
+        meta = {
+            "terrain_train": {
+                "source": args.train_source,
+                "situation": args.train_situation,
+                "n": train_n,
+            },
+            "ring_fit": {"source": args.ring_source, "n": len(ring_cases)},
+            "holdout_excluded": len(held),
+            "shrinkage": {"lam_w": args.lam_w, "lam_region": args.lam_region},
+            "dropped_features": list(args.drop),
+            "ring_published_categories": sorted(q),
+            "ring_params": {
+                k: {"mu": v[0], "sigma": v[1], "n": ring.n_fit.get(k)}
+                for k, v in ring.params.items()
+            },
+            "line_files": [p.name for p in builder.line_files],
+            "stream_files": [p.name for p in builder.stream_files],
+        }
+        out = args.out or ROOT / "models" / f"{args.model}.json"
+        save_model(model, out, meta)
+        print(f"ring categories: {', '.join(sorted(ring.params))}")
+        print(f"wrote {out}")
+
+    elif args.cmd == "predict":
+        from spm.io.artifact import load_model
+        from spm.schema import Case, LonLat
+
+        builder = _builder(args, terrain)
+        model = load_model(args.model, stack_provider=builder)
+        lon, lat = args.ipp
+        case = Case(
+            case_id="live",
+            source="cli",
+            ipp=LonLat(lon, lat),
+            category=args.category,
+            region=args.region,
+        )
+        fr = model.feature_res
+        if fr is not None and abs(args.res / fr - round(args.res / fr)) > 1e-9:
+            raise SystemExit(f"--res {args.res:g} must be a multiple of the feature res {fr:g} m")
+        window = Window.around(lon, lat, side_m=args.side, res=args.res)
+        stack = builder(case, window)
+        pred = model.predict(case, window, stack)
+        pred.check()
+        stem = args.out or ROOT / "predictions" / datetime.now().strftime("%Y%m%d-%H%M%S")
+        extra = []
+        pred.check()
+        _write_prediction(pred, stem, case, stack, extra)
 
     elif args.cmd == "holdout":
         pool = [c for c in load_cases(args.data) if c.source == args.source and c.ipp]
