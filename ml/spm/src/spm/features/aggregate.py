@@ -96,11 +96,21 @@ class SubcellDesign:
         """Rows ``cells`` only (patterns no longer used are kept; they cost nothing)."""
         return SubcellDesign(self.counts[cells], self.patterns, self.n_sub)
 
-    def log_intensity(self, theta: np.ndarray) -> np.ndarray:
-        """(cells,) log mean sub-cell intensity under log-multipliers ``theta``."""
+    def log_intensity(self, theta: np.ndarray, cap: float | None = None) -> np.ndarray:
+        """(cells,) log mean sub-cell intensity under log-multipliers ``theta``.
+
+        ``cap`` clips each sub-cell's log-multiplier before averaging, so a capped map
+        is the same terrain at any output resolution (the cap is a sub-cell quantile).
+        """
         z = self.patterns @ theta
+        if cap is not None:
+            z = np.minimum(z, cap)
         zmax = z.max() if z.size else 0.0
         return np.log(self.counts @ np.exp(z - zmax)) + zmax - np.log(self.n_sub)
+
+    def any_pattern(self, mask: np.ndarray) -> np.ndarray:
+        """(cells,) True where a cell contains any sub-cell whose pattern is in ``mask``."""
+        return np.asarray(self.counts @ mask.astype(np.float32)).ravel() > 0
 
     def grad(self, theta: np.ndarray, weights: np.ndarray) -> np.ndarray:
         """sum over cells of weights[cell] * d log_intensity[cell] / d theta."""
@@ -128,13 +138,24 @@ def value_range(values: np.ndarray) -> tuple[float, float] | None:
     return (float(v.min()), float(v.max())) if v.size else None
 
 
+def no_data(stack, factor: int) -> np.ndarray:
+    """(n, n) True where a model cell has any fine cell without elevation (nothing to
+    reason about there; the map hatches it)."""
+    if not stack.has("dem"):
+        return np.zeros((stack.window.n // factor,) * 2, bool)
+    nan = ~np.isfinite(stack["dem"])
+    n = nan.shape[0] // factor
+    return nan.reshape(n, factor, n, factor).any(axis=(1, 3))
+
+
 def out_of_range(
     specs: list[FeatureSpec],
     feats: dict[str, np.ndarray],
     ranges: dict[str, tuple[float, float]],
     factor: int,
 ) -> np.ndarray:
-    """(n, n) True where any sub-cell has a feature value outside its training range.
+    """(n, n) True where any sub-cell has a feature value outside its training range,
+    or no value at all (no elevation data there).
 
     Values are first clipped to the spec's outer edges: beyond the last edge every
     value lands in the same bin, so a cell 20 km from a trail is no more of an
@@ -144,6 +165,8 @@ def out_of_range(
     n = n_fine // factor
     flags = np.zeros((n_fine, n_fine), bool)
     for s in specs:
+        if s.name in feats:
+            flags |= ~np.isfinite(feats[s.name])
         if s.name in feats and s.name in ranges:
             lo, hi = np.clip(ranges[s.name], s.edges[0], s.edges[-1])
             v = np.clip(feats[s.name], s.edges[0], s.edges[-1])
