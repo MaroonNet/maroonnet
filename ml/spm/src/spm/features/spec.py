@@ -25,6 +25,10 @@ class FeatureSpec:
     # True when the bins AND the values are as published, so Model A may use the feature.
     # False when the values are published but the feature definition is ours (Model B only).
     published: bool = True
+    # Bin for cells where the feature cannot be computed (no elevation data, for example).
+    # None = the last bin, right for distance features ("beyond"); elev_pos sets its
+    # reference bin so missing terrain never reads as "high ground".
+    missing_bin: int | None = None
 
     @property
     def n_bins(self) -> int:
@@ -35,9 +39,11 @@ class FeatureSpec:
         return all(v is not None for v in self.prior)
 
     def bin_index(self, values: np.ndarray) -> np.ndarray:
-        """Bin number (0..n_bins-1) of each value; NaN and inf land in the last bin."""
-        v = np.where(np.isfinite(values), values, np.inf)
-        return np.digitize(v, self.edges, right=False).astype(np.int16)
+        """Bin number (0..n_bins-1) of each value; non-finite values go to ``missing_bin``."""
+        finite = np.isfinite(values)
+        idx = np.digitize(np.where(finite, values, 0.0), self.edges, right=False)
+        miss = self.n_bins - 1 if self.missing_bin is None else self.missing_bin
+        return np.where(finite, idx, miss).astype(np.int16)
 
     def log_prior(self) -> np.ndarray:
         """Published log-multipliers; unfilled bins default to log(1) = 0 (no effect)."""
@@ -61,6 +67,7 @@ def load_specs(path: Path) -> list[FeatureSpec]:
                 prior=prior,
                 source=f.get("source", ""),
                 published=bool(f.get("published", True)),
+                missing_bin=f.get("missing_bin"),
             )
         )
     return specs

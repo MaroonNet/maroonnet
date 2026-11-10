@@ -18,7 +18,14 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=7", "ruff>=0.6"]
 # Added in step 3 (terrain stacks). Kept out of the core install so step 1 installs anywhere.
-geo = ["rasterio>=1.4", "geopandas>=1.0", "pyogrio>=0.10", "shapely>=2.0", "osmium>=4.0"]
+geo = [
+    "rasterio>=1.4",
+    "affine>=2.4",
+    "geopandas>=1.0",
+    "pyogrio>=0.10",
+    "shapely>=2.0",
+    "osmium>=4.0",
+]
 # Heatmap PNGs (`spm predict`).
 viz = ["matplotlib>=3.9"]
 

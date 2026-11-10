@@ -48,6 +48,7 @@ terrain stacks (roadmap phase 4).
 from __future__ import annotations
 
 import copy
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -61,6 +62,8 @@ from spm.geodata.grid import Window
 from spm.models.bayes import apply_log_multipliers
 from spm.models.ring import RingModel
 from spm.schema import Case
+
+log = logging.getLogger(__name__)
 
 StackProvider = Callable[[Case, Window], object]
 CAP_PERCENTILE = 99.5
@@ -137,13 +140,13 @@ class HybridModel:
 
     # ---------- design ----------
     def _features(self, case: Case, window: Window, ipp: bool):
-        """(features on the fine grid, sub-cells per side); None if there is no stack."""
+        """(features on the fine grid, sub-cells per side, fine stack); None if no stack."""
         fine, factor = aggregate.fine_window(window, self.feature_res)
         stack = self.stack_provider(case, fine)
         if stack is None:
             return None
         ipp_rc = fine.rowcol(case.ipp.lon, case.ipp.lat) if ipp else None
-        return relative.compute(stack, ipp_rc), factor
+        return relative.compute(stack, ipp_rc), factor, stack
 
     # ---------- training ----------
     def _ring_stratum(self, c: Case):
@@ -159,7 +162,7 @@ class HybridModel:
         alt = self.rng.choice(n - 1, size=min(self.n_alt, n - 1), replace=False)
         alt = alt + (alt >= find_i)  # skip the find cell
         cells = np.concatenate([[find_i], alt])
-        return np.log(np.maximum(ring.ravel()[cells], 1e-300)), cells, *got
+        return np.log(np.maximum(ring.ravel()[cells], 1e-300)), cells, *got[:2]
 
     def _find_stratum(self, c: Case):
         """(zero offset, cells, features, factor) for a find-only case: all cells in the radius."""
@@ -172,7 +175,7 @@ class HybridModel:
         d = win.distance_from(c.find.lon, c.find.lat).ravel()
         disc = np.flatnonzero(d <= self.find_radius_m)
         cells = np.concatenate([[find_i], disc[disc != find_i]])
-        return np.zeros(len(cells)), cells, *got
+        return np.zeros(len(cells)), cells, *got[:2]
 
     def strata(self, cases: list[Case]) -> list[Stratum]:
         """One conditional-logit stratum per usable case.
@@ -182,6 +185,7 @@ class HybridModel:
         once and reused across folds (see eval.find_only).
         """
         out = []
+        skipped = 0
         for c in cases:
             if c.find is None:
                 continue
@@ -192,6 +196,7 @@ class HybridModel:
             else:
                 continue
             if built is None:
+                skipped += 1
                 continue
             logoff, cells, feats, factor = built
             fine = aggregate.fine_window(self.model_window(c), self.feature_res)[0]
@@ -215,6 +220,12 @@ class HybridModel:
                     find_only=c.ipp is None,
                     find_pattern=find_pattern,
                 )
+            )
+        if skipped:
+            log.warning(
+                "%d of %d cases left out of training: find outside the window or no terrain",
+                skipped,
+                len(cases),
             )
         return out
 
@@ -312,22 +323,24 @@ class HybridModel:
         if stack is None or not self.specs:
             return apply_log_multipliers(ring, np.zeros(window.shape), self.name, self.version)
         if self.feature_res is None:
-            got = relative.compute(stack, window.rowcol(case.ipp.lon, case.ipp.lat)), 1
+            got = relative.compute(stack, window.rowcol(case.ipp.lon, case.ipp.lat)), 1, stack
         else:  # the caller's stack is at model res; fetch the fine one
             got = self._features(case, window, ipp=True)
             if got is None:
                 return apply_log_multipliers(ring, np.zeros(window.shape), self.name, self.version)
-        feats, factor = got
+        feats, factor, fine_stack = got
         design = aggregate.SubcellDesign.from_features(self.specs, feats, factor)
         theta = self.w + self.delta.get(case.region, 0.0)
         flags = aggregate.out_of_range(self.specs, feats, self.ranges, factor)
+        flags |= aggregate.no_data(fine_stack, factor)
+        cap = self.max_logm
         logm = np.where(
-            flags.ravel(), design.log_intensity(self.w0), design.log_intensity(theta)
+            flags.ravel(),
+            design.log_intensity(self.w0, cap=cap),
+            design.log_intensity(theta, cap=cap),
         ).reshape(window.shape)
-        if self.max_logm is not None:
-            over = logm > self.max_logm
-            flags |= over
-            logm = np.minimum(logm, self.max_logm)
+        if cap is not None:  # flag cells where any sub-cell stack was clipped
+            flags |= design.any_pattern(design.patterns @ theta > cap).reshape(window.shape)
         pred = apply_log_multipliers(ring, logm, self.name, self.version)
         pred.flags = flags
         return pred

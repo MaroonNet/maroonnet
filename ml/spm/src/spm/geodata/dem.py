@@ -11,8 +11,8 @@ network, so pre-download the tiles for the operating area with ``fetch_tiles``.
 
 from __future__ import annotations
 
+import logging
 import math
-import urllib.request
 from pathlib import Path
 
 import numpy as np
@@ -21,7 +21,10 @@ from affine import Affine
 from rasterio.errors import RasterioIOError
 from rasterio.warp import Resampling, reproject, transform_bounds
 
+from spm.download import fetch
 from spm.geodata.grid import Window
+
+log = logging.getLogger(__name__)
 
 BASE_URL = "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/current"
 SOURCE = "usgs-3dep-13"
@@ -53,6 +56,11 @@ def tile_path(name: str, tile_dir: Path | None) -> str:
         local = Path(tile_dir) / f"USGS_13_{name}.tif"
         if local.exists():
             return str(local)
+        log.warning(
+            "tile %s is not in %s; reading it over the network (spm fetch-dem downloads it)",
+            name,
+            tile_dir,
+        )
     return "/vsicurl/" + tile_url(name)
 
 
@@ -66,10 +74,7 @@ def fetch_tiles(names: list[str], tile_dir: Path) -> list[Path]:
     tile_dir.mkdir(parents=True, exist_ok=True)
     out = []
     for name in names:
-        path = tile_dir / f"USGS_13_{name}.tif"
-        if not path.exists():
-            urllib.request.urlretrieve(tile_url(name), path)
-        out.append(path)
+        out.append(fetch(tile_url(name), tile_dir / f"USGS_13_{name}.tif"))
     return out
 
 
@@ -88,10 +93,19 @@ def read_dem(window: Window, tile_dir: Path | None = None, sources: list[str] | 
         part = np.full(window.shape, np.nan, dtype=np.float32)
         try:
             src = rasterio.open(src_path)
-        except RasterioIOError:
-            if src_path.startswith("/vsicurl/"):
-                continue  # no 3DEP tile here (open water, outside coverage)
-            raise
+        except RasterioIOError as err:
+            if not src_path.startswith("/vsicurl/"):
+                raise
+            if "404" in str(err):
+                log.info("no 3DEP tile at %s (open water or outside coverage)", src_path)
+            else:
+                log.warning(
+                    "could not read %s (%s): offline? elevation is missing there; "
+                    "run spm fetch-dem before going into the field",
+                    src_path,
+                    str(err).splitlines()[0][:120],
+                )
+            continue
         with src:
             reproject(
                 source=rasterio.band(src, 1),
@@ -105,3 +119,8 @@ def read_dem(window: Window, tile_dir: Path | None = None, sources: list[str] | 
         fill = np.isnan(out) & ~np.isnan(part)
         out[fill] = part[fill]
     return out
+
+
+def coverage(dem_values: np.ndarray) -> float:
+    """Fraction of cells with elevation data."""
+    return float(np.isfinite(dem_values).mean()) if dem_values.size else 0.0

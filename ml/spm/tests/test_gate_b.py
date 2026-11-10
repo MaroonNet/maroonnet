@@ -79,7 +79,7 @@ def test_combined_multiplier_is_capped_and_flagged(world_and_cases):  # noqa: F8
     capped = BayesModel(big, RingModel(quantiles=Q), world, max_multiplier=7.5).fit([])
     a, b = uncapped.predict(c, w, world(c, w)), capped.predict(c, w, world(c, w))
     b.check()
-    assert a.flags is None and b.flags is not None
+    assert not a.flags.any() and b.flags.any()
     ratio_a = a.prob / RingModel(quantiles=Q).fit([]).predict(c, w).prob
     assert ratio_a.max() / ratio_a.min() > 7.5  # 5 x 3 x 2 = 30x stacks exist uncapped
     assert b.flags.any() and b.flags.sum() < b.flags.size / 10

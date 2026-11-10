@@ -11,7 +11,7 @@ the file records when and how it was made.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -58,7 +58,7 @@ def write_holdout(
         "fraction": frac,
         "seed": seed,
         "strata": ["category", "terrain"],
-        "created_utc": datetime.now(UTC).isoformat(timespec="seconds"),
+        "created_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "n": len(ids),
         "case_ids": ids,
     }

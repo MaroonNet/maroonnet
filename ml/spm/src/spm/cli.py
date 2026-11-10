@@ -19,7 +19,10 @@ spm holdout --source mapscore --frac 0.33 --seed N      freeze a test set (confi
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
+import logging
+import os
+import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -35,7 +38,27 @@ from spm.geodata.grid import Window
 from spm.models import REGISTRY, RingModel
 from spm.models.bayes import BayesModel
 
-ROOT = Path.cwd()
+
+def _find_root() -> Path:
+    """The project folder holding configs/ and models/.
+
+    ``SPM_ROOT`` if set; else the first of the working directory and its parents that
+    has configs/prior_art.yaml; else the package's own checkout (src/spm/../..).
+    """
+    env = os.environ.get("SPM_ROOT")
+    if env:
+        return Path(env)
+    for d in [Path.cwd(), *Path.cwd().parents]:
+        if (d / "configs" / "prior_art.yaml").exists():
+            return d
+    return Path(__file__).resolve().parents[2]
+
+
+ROOT = _find_root()
+
+
+def _stamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
 
 
 def _factories(names: list[str], quantiles_path: Path) -> dict:
@@ -117,6 +140,7 @@ def _named(model, name):
 
 
 def main(argv: list[str] | None = None) -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     ap = argparse.ArgumentParser(prog="spm")
     ap.add_argument("--data", type=Path, default=ROOT / "data")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -205,6 +229,11 @@ def main(argv: list[str] | None = None) -> None:
     f.add_argument("--lines", type=Path, nargs="*", default=None)
     f.add_argument("--streams", type=Path, nargs="*", default=None)
     f.add_argument("--out", type=Path, default=None, help="default: models/<model>.json")
+    f.add_argument(
+        "--allow-no-holdout",
+        action="store_true",
+        help="fit even though configs/holdout.yaml is missing (every case is then trainable)",
+    )
 
     pr = sub.add_parser("predict", help="probability raster + heatmap for one IPP")
     pr.add_argument("model", type=Path, help="model JSON from `spm fit`")
@@ -225,6 +254,11 @@ def main(argv: list[str] | None = None) -> None:
     pr.add_argument("--elapsed-h", type=float, default=None, help="hours since the IPP time")
     pr.add_argument("--max-slope-deg", type=float, default=None, help="impassable above this")
     pr.add_argument("--searched", type=Path, nargs="*", default=None, help="POD GeoJSON/GeoTIFF")
+    pr.add_argument(
+        "--allow-missing-dem",
+        action="store_true",
+        help="apply --elapsed-h even where elevation is missing (those cells become unreachable)",
+    )
 
     up = sub.add_parser("update", help="re-weight a prediction raster after a search")
     up.add_argument("tif", type=Path, help="GeoTIFF from `spm predict` or an earlier update")
@@ -261,7 +295,9 @@ def main(argv: list[str] | None = None) -> None:
         print("\ncases per category:\n" + df["category"].value_counts().to_string())
 
     elif args.cmd == "evaluate":
-        cases = load_cases(args.data)
+        cases, held = partition(load_cases(args.data), load_holdout(ROOT / HOLDOUT_PATH))
+        if held:
+            print(f"frozen test set: {len(held)} cases excluded (scored only by gate-b)")
         per_case = evaluate(
             _factories(args.models.split(","), args.quantiles),
             cases,
@@ -270,7 +306,7 @@ def main(argv: list[str] | None = None) -> None:
         )
         summary = summarize(per_case)
         args.out.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.now().strftime("%Y%m%d-%H%M")
+        stamp = _stamp()
         per_case.to_csv(args.out / f"scores_{stamp}.csv", index=False)
         summary.to_csv(args.out / f"summary_{stamp}.csv", index=False)
         with pd.option_context("display.width", 120):
@@ -339,7 +375,7 @@ def main(argv: list[str] | None = None) -> None:
         summary = paired_summary(per_case)
         regions = by_region(per_case)
         args.out.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.now().strftime("%Y%m%d-%H%M")
+        stamp = _stamp()
         per_case.to_csv(args.out / f"terrain_scores_{stamp}.csv", index=False)
         summary.to_csv(args.out / f"terrain_summary_{stamp}.csv", index=False)
         with pd.option_context("display.width", 140):
@@ -377,6 +413,17 @@ def main(argv: list[str] | None = None) -> None:
             test, ipp_train = ipp_train, []
             print("no configs/holdout.yaml: leave-one-out over all IPP cases (no AZ training)")
         print(f"terrain trained on {len(train)} {args.train_source} finds")
+        prior_runs = len(list(args.out.glob("gate_b_paired_*.csv"))) if args.out.exists() else 0
+        if prior_runs:
+            print(
+                f"NOTE: this test set has already been scored {prior_runs} time(s); after "
+                "design changes made with those results in view, treat the verdict as a "
+                "development number, not a test"
+            )
+        print(
+            "ring: refitted per fold on the training cases for every model (model_a.json "
+            "ships the published ring instead)"
+        )
 
         def terrain_model(name, use, extra=()):
             m = HybridModel(
@@ -443,7 +490,7 @@ def main(argv: list[str] | None = None) -> None:
         ]
         result = pd.DataFrame(rows).round(3)
         args.out.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.now().strftime("%Y%m%d-%H%M")
+        stamp = _stamp()
         per_case.to_csv(args.out / f"gate_b_scores_{stamp}.csv", index=False)
         result.to_csv(args.out / f"gate_b_paired_{stamp}.csv", index=False)
         with pd.option_context("display.width", 140):
@@ -476,11 +523,17 @@ def main(argv: list[str] | None = None) -> None:
 
         builder = _builder(args, terrain)
         specs = load_specs(ROOT / "configs" / "prior_art.yaml")
+        held_ids = load_holdout(ROOT / HOLDOUT_PATH)
+        if not held_ids and not args.allow_no_holdout:
+            raise SystemExit(
+                f"no frozen test set at {ROOT / HOLDOUT_PATH}: refusing to fit on every case. "
+                "Run `spm holdout --seed N` first, or pass --allow-no-holdout."
+            )
         q = (yaml.safe_load((ROOT / "configs" / "ring_quantiles.yaml").read_text()) or {}).get(
             "categories"
         ) or {}
         q = {k: v for k, v in q.items() if v and all(v.get(x) for x in ("q25", "q50", "q75"))}
-        cases, held = partition(load_cases(args.data), load_holdout(ROOT / HOLDOUT_PATH))
+        cases, held = partition(load_cases(args.data), held_ids)
         if held:
             print(f"holdout: {len(held)} frozen test cases excluded from every fit")
         ring_cases = [c for c in cases if c.source == args.ring_source and c.ipp is not None]
@@ -556,11 +609,22 @@ def main(argv: list[str] | None = None) -> None:
         if fr is not None and abs(args.res / fr - round(args.res / fr)) > 1e-9:
             raise SystemExit(f"--res {args.res:g} must be a multiple of the feature res {fr:g} m")
         window = Window.around(lon, lat, side_m=args.side, res=args.res)
+        from spm.geodata import dem
+
         stack = builder(case, window)
+        cov = dem.coverage(stack["dem"]) if stack.has("dem") else 0.0
+        if cov < 1.0:
+            print(f"elevation missing for {1 - cov:.1%} of the window (hatched on the map)")
         pred = model.predict(case, window, stack)
         pred.check()
-        stem = args.out or ROOT / "predictions" / datetime.now().strftime("%Y%m%d-%H%M%S")
+        stem = args.out or ROOT / "predictions" / _stamp()
         extra = []
+        if args.elapsed_h is not None and cov < 1.0 and not args.allow_missing_dem:
+            raise SystemExit(
+                f"--elapsed-h needs elevation everywhere, but {1 - cov:.1%} of the window has "
+                "none (offline, or tiles not fetched): run `spm fetch-dem` with the window "
+                "bounds, or pass --allow-missing-dem to mark those cells unreachable."
+            )
         if args.elapsed_h is not None:
             from spm.geodata.travel import travel_hours
             from spm.io.raster import write_band
@@ -599,7 +663,8 @@ def main(argv: list[str] | None = None) -> None:
         pred = _apply_searched(pred, args.searched)
         pred.check()
         n = pred.model.count("+search")
-        stem = args.out or args.tif.with_name(f"{args.tif.stem.split('_u')[0]}_u{n}")
+        base = re.sub(r"_u\d+$", "", args.tif.stem)
+        stem = args.out or args.tif.with_name(f"{base}_u{n}")
         case = Case(case_id="live", source="cli", ipp=LonLat(*ipp), category="?") if ipp else None
         _write_prediction(pred, stem, case, None, [])
 

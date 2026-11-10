@@ -10,6 +10,7 @@ any CRS) is reprojected onto the window instead.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -23,6 +24,8 @@ from rasterio.warp import Resampling, reproject
 from spm.geodata.grid import Window
 from spm.models.update import combine_pod
 
+log = logging.getLogger(__name__)
+
 
 def pod_from_geojson(source: Path | dict, window: Window) -> np.ndarray:
     """POD per window cell from a FeatureCollection of polygons with a ``pod`` property."""
@@ -31,9 +34,11 @@ def pod_from_geojson(source: Path | dict, window: Window) -> np.ndarray:
     to_win = Transformer.from_crs(4326, window.epsg, always_xy=True).transform
     transform = Affine(*window.affine())
     layers = []
+    skipped = []
     for f in features:
         props = f.get("properties") or {}
         if "pod" not in props or f.get("geometry") is None:
+            skipped.append(str(props.get("id", f.get("id", "?"))))
             continue
         pod = float(props["pod"])
         if not 0.0 <= pod <= 1.0:
@@ -46,6 +51,13 @@ def pod_from_geojson(source: Path | dict, window: Window) -> np.ndarray:
             [(geom, 1)], out_shape=window.shape, transform=transform, dtype="uint8"
         ).astype(bool)
         layers.append(np.where(mask, pod, 0.0))
+    if skipped:
+        log.warning(
+            "%d of %d searched-area features ignored (no 'pod' property or no geometry): %s",
+            len(skipped),
+            len(features),
+            ", ".join(skipped),
+        )
     if not layers:
         return np.zeros(window.shape)
     return combine_pod(layers)
