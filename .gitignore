@@ -9,6 +9,10 @@
 *.db
 missions/
 
+# Map packs, wherever they are created. Never commit one: a pack is hundreds of megabytes,
+# and it is downloaded or built, not written by hand.
+*.pmtiles
+
 # Secrets and local config
 .env
 .env.*
