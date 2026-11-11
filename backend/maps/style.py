@@ -6,9 +6,10 @@ layer switches turn on and off as a unit. Layers are drawn in list order: the fi
 
 # colours
 PAPER = "#f4f1e8"
-WATER, WATER_LINE = "#a9cfe6", "#3f8fc4"
+WATER, WATER_LINE, WATER_TEXT = "#a9cfe6", "#3f8fc4", "#2a6a99"
 TRAIL, TRAIL_PAVED = "#b3261e", "#8c8c8c"
 TRACK, FOUR_WD, DIRT = "#8a5a2b", "#2f2418", "#b08850"
+HALO = "rgba(255,255,255,0.85)"  # the pale rim around label text that keeps it readable over lines
 
 SRC = "basemap"
 BASEMAP_MAX_ZOOM = 14  # the basemap is built to zoom 14 (D16); MapLibre enlarges its tiles beyond that
@@ -121,6 +122,36 @@ LAYERS = [
                  "line-dasharray": ["case",
                                     ["in", "alpine", ["coalesce", ["get", "sac_scale"], ""]], ["literal", [0.6, 1.8]],
                                     ["literal", [2.5, 1.5]]]}),
+
+    # ---- labels: water, public land, roads, trails. symbol-placement "line" runs text along a line.
+    layer("water-labels", "water", "symbol", "water_labels",
+          layout={"text-field": ["get", "name"], "text-font": FONT["italic"], "text-size": 11},
+          paint={"text-color": WATER_TEXT, "text-halo-color": HALO, "text-halo-width": 1.2}),
+    layer("waterway-labels", "water", "symbol", "waterways", minzoom=12,
+          filter=["has", "name"],
+          layout={"symbol-placement": "line", "text-field": ["get", "name"], "text-font": FONT["italic"],
+                  "text-size": 10.5, "text-max-angle": 60, "symbol-spacing": 350},
+          paint={"text-color": WATER_TEXT, "text-halo-color": HALO, "text-halo-width": 1.2}),
+    layer("public-land-labels", "public_land", "symbol", "public_land_labels",
+          layout={"text-field": ["get", "name"], "text-font": FONT["italic"], "text-size": zoom(7, 10, 12, 12.5),
+                  "text-max-width": 9, "text-letter-spacing": 0.05},
+          paint={"text-color": ["match", ["get", "designation"], "blm", "#8a6a12", "#3d6e2f"],
+                 "text-halo-color": HALO, "text-halo-width": 1.2}),
+    layer("road-labels", "roads", "symbol", "roads", minzoom=11,
+          filter=["any", ["has", "name"], ["has", "ref"]],
+          layout={"symbol-placement": "line", "text-field": ["coalesce", ["get", "ref"], ["get", "name"]],
+                  "text-font": FONT["regular"], "text-size": 10.5, "symbol-spacing": 400},
+          paint={"text-color": "#444", "text-halo-color": HALO, "text-halo-width": 1.4}),
+    layer("backroad-labels", "backroads", "symbol", "backroads", minzoom=12,
+          filter=["any", ["has", "name"], ["has", "ref"]],
+          layout={"symbol-placement": "line", "text-field": ["coalesce", ["get", "ref"], ["get", "name"]],
+                  "text-font": FONT["regular"], "text-size": 10, "symbol-spacing": 350},
+          paint={"text-color": TRACK, "text-halo-color": HALO, "text-halo-width": 1.4}),
+    layer("trail-labels", "trails", "symbol", "trails", minzoom=13,
+          filter=["all", ["has", "name"], ["!", ["get", "paved"]]],
+          layout={"symbol-placement": "line", "text-field": ["get", "name"], "text-font": FONT["italic"],
+                  "text-size": 10.5, "symbol-spacing": 300, "text-max-angle": 60},
+          paint={"text-color": TRAIL, "text-halo-color": HALO, "text-halo-width": 1.4}),
 ]
 
 
