@@ -1,8 +1,10 @@
 """The map backend's web routes."""
 
 import os
+import pathlib
 
 from fastapi import APIRouter, HTTPException, Path, Request, Response
+from fastapi.responses import FileResponse
 
 from .packs import open_pack
 from .style import build_style
@@ -12,6 +14,9 @@ router = APIRouter()
 # Until the CPA has settings (plan phase 2), each pack's path comes from an environment variable.
 BASEMAP_SETTING = "MAPS_BASEMAP_PACK"
 TERRAIN_SETTING = "MAPS_TERRAIN_PACK"
+
+# Fonts and the icon sheet ship with the code, so the map needs nothing from the internet.
+ASSETS = pathlib.Path(__file__).parent / "assets"
 
 Zoom = Path(ge=0, le=30)
 Column = Path(ge=0)
@@ -34,6 +39,14 @@ def serve_tile(setting: str, z: int, x: int, y: int) -> Response:
     return Response(data, media_type=pack.media_type, headers=headers)
 
 
+def serve_asset(folder: str, name: str) -> FileResponse:
+    # A path value cannot contain "/", so the file is always directly inside the folder.
+    file = ASSETS / folder / name
+    if not file.is_file():
+        raise HTTPException(404, "no such file")
+    return FileResponse(file)
+
+
 @router.get("/tiles/basemap/{z}/{x}/{y}")
 def basemap_tile(z: int = Zoom, x: int = Column, y: int = Row):
     return serve_tile(BASEMAP_SETTING, z, x, y)
@@ -48,3 +61,8 @@ def terrain_tile(z: int = Zoom, x: int = Column, y: int = Row):
 def style(request: Request):
     # The address this request came to, so the style points back at the same server.
     return build_style(str(request.base_url).rstrip("/"))
+
+
+@router.get("/maps/fonts/{name}")
+def font(name: str):
+    return serve_asset("fonts", name)

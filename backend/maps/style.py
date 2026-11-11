@@ -13,6 +13,18 @@ TRACK, FOUR_WD, DIRT = "#8a5a2b", "#2f2418", "#b08850"
 SRC = "basemap"
 BASEMAP_MAX_ZOOM = 14  # the basemap is built to zoom 14 (D16); MapLibre enlarges its tiles beyond that
 
+# Noto Sans, from @fontsource/noto-sans 5.3.0 (SIL Open Font License 1.1: assets/fonts/LICENSE).
+# The style's font-faces hand MapLibre the font files, and it draws the letters itself.
+FONT = {"regular": ["Noto Sans Regular"], "bold": ["Noto Sans Bold"], "italic": ["Noto Sans Italic"]}
+
+
+def font_faces(origin: str) -> dict:
+    def files(weight):
+        return [{"url": f"{origin}/maps/fonts/noto-sans-{subset}-{weight}.woff2"} for subset in ("latin", "latin-ext")]
+
+    return {"Noto Sans Regular": files("400-normal"), "Noto Sans Bold": files("700-normal"),
+            "Noto Sans Italic": files("400-italic")}
+
 
 def layer(id, group, type, source_layer=None, **spec):
     """One style layer. source_layer names the layer inside the basemap tiles that it draws."""
@@ -121,6 +133,7 @@ def build_style(origin: str) -> dict:
     return {
         "version": 8,
         "name": "MaroonNet SAR",
+        "font-faces": font_faces(origin),
         "sources": {
             SRC: {"type": "vector", "tiles": [f"{origin}/tiles/basemap/{{z}}/{{x}}/{{y}}"],
                   "minzoom": 0, "maxzoom": BASEMAP_MAX_ZOOM},
