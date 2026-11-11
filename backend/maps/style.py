@@ -20,8 +20,34 @@ def layer(id, group, type, source_layer=None, **spec):
     return out | spec
 
 
+def zoom(*stops):
+    """A value that changes with zoom: zoom(10, 1, 16, 4) is 1 at zoom 10 and 4 at zoom 16."""
+    return ["interpolate", ["linear"], ["zoom"], *stops]
+
+
 LAYERS = [
     layer("paper", "base", "background", paint={"background-color": PAPER}),
+
+    # ---- vegetation and ground cover
+    layer("landcover", "landcover", "fill", "landcover",
+          paint={"fill-color": ["match", ["get", "kind"],
+                                "forest", "#d3e3bf", "scrub", "#e1e5c3", "meadow", "#edf0d4",
+                                "rock", "#e0dbd2", "wetland", "#d5e6e6", PAPER],
+                 "fill-opacity": 0.85}),
+
+    # ---- public land: fills, then outlines (BLM in yellow, as on agency maps)
+    layer("public-land-fill", "public_land", "fill", "public_land",
+          paint={"fill-color": ["match", ["get", "designation"],
+                                "wilderness", "#5f9a4c", "national_forest", "#8fbf73", "national_park", "#6aa35a",
+                                "blm", "#e8c66a", "park", "#9cc58b", "#b9cfa9"],
+                 "fill-opacity": ["match", ["get", "designation"], "blm", 0.22, 0.18]}),
+    layer("public-land-outline", "public_land", "line", "public_land",
+          paint={"line-color": ["match", ["get", "designation"],
+                                "wilderness", "#3d6e2f", "blm", "#b58a1c", "#5d8f47"],
+                 "line-width": zoom(6, 0.6, 12, 1.6),
+                 "line-opacity": ["match", ["get", "designation"], "blm", 0.35, 0.9],
+                 "line-dasharray": ["match", ["get", "designation"],
+                                    "wilderness", ["literal", [4, 2]], ["literal", [1, 0]]]}),
 
     # ---- water
     layer("water", "water", "fill", "water",
