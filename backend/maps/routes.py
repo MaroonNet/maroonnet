@@ -2,7 +2,7 @@
 
 import os
 
-from fastapi import APIRouter, HTTPException, Path, Response
+from fastapi import APIRouter, HTTPException, Path, Request, Response
 
 from .packs import open_pack
 from .style import build_style
@@ -45,5 +45,6 @@ def terrain_tile(z: int = Zoom, x: int = Column, y: int = Row):
 
 
 @router.get("/maps/style.json")
-def style():
-    return build_style()
+def style(request: Request):
+    # The address this request came to, so the style points back at the same server.
+    return build_style(str(request.base_url).rstrip("/"))
