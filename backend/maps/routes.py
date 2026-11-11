@@ -5,6 +5,7 @@ import os
 from fastapi import APIRouter, HTTPException, Path, Response
 
 from .packs import open_pack
+from .style import build_style
 
 router = APIRouter()
 
@@ -41,3 +42,8 @@ def basemap_tile(z: int = Zoom, x: int = Column, y: int = Row):
 @router.get("/tiles/terrain/{z}/{x}/{y}")
 def terrain_tile(z: int = Zoom, x: int = Column, y: int = Row):
     return serve_tile(TERRAIN_SETTING, z, x, y)
+
+
+@router.get("/maps/style.json")
+def style():
+    return build_style()
