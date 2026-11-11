@@ -7,6 +7,8 @@ layer switches turn on and off as a unit. Layers are drawn in list order: the fi
 # colours
 PAPER = "#f4f1e8"
 WATER, WATER_LINE = "#a9cfe6", "#3f8fc4"
+TRAIL, TRAIL_PAVED = "#b3261e", "#8c8c8c"
+TRACK, FOUR_WD, DIRT = "#8a5a2b", "#2f2418", "#b08850"
 
 SRC = "basemap"
 BASEMAP_MAX_ZOOM = 14  # the basemap is built to zoom 14 (D16); MapLibre enlarges its tiles beyond that
@@ -88,6 +90,25 @@ LAYERS = [
           paint={"line-color": ["match", ["get", "kind"], "highway", "#e3843c", "major", "#f3c35a", "#ffffff"],
                  "line-width": zoom_match("kind", {5: {"highway": 0.8, "major": 0.4}, 10: {"highway": 2, "major": 1.4},
                                                    16: {"highway": 7, "major": 5.4}}, {5: 0.2, 10: 0.5, 16: 3.6})}),
+
+    # ---- 4WD tracks and dirt roads
+    layer("backroads", "backroads", "line", "backroads",
+          layout={"line-join": "round"},
+          paint={"line-color": ["case", ["get", "four_wd"], FOUR_WD, ["==", ["get", "kind"], "track"], TRACK, DIRT],
+                 "line-width": zoom(9, ["case", ["get", "four_wd"], 0.8, 0.7], 16, ["case", ["get", "four_wd"], 2.6, 2.2]),
+                 "line-dasharray": ["case", ["get", "four_wd"], ["literal", [4, 1.5]],
+                                    ["==", ["get", "kind"], "dirt_road"], ["literal", [1, 0]], ["literal", [3, 1.5]]]}),
+
+    # ---- trails: dashed; alpine routes dotted; paved paths (towns) thin grey
+    layer("trails-paved", "trails", "line", "trails", filter=["get", "paved"],
+          paint={"line-color": TRAIL_PAVED, "line-width": zoom(12, 0.6, 16, 1.6)}),
+    layer("trails", "trails", "line", "trails", filter=["!", ["get", "paved"]],
+          layout={"line-join": "round"},
+          paint={"line-color": TRAIL,
+                 "line-width": zoom(10, 0.8, 16, 2.4),
+                 "line-dasharray": ["case",
+                                    ["in", "alpine", ["coalesce", ["get", "sac_scale"], ""]], ["literal", [0.6, 1.8]],
+                                    ["literal", [2.5, 1.5]]]}),
 ]
 
 
