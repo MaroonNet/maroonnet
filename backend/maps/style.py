@@ -25,6 +25,22 @@ def zoom(*stops):
     return ["interpolate", ["linear"], ["zoom"], *stops]
 
 
+def zoom_match(prop, stops, default):
+    """One zoom ramp whose value at each stop depends on a field.
+
+    MapLibre allows only one zoom ramp per value, and it must be the outermost expression, so a
+    width that depends on both zoom and a field is written as a field match inside each zoom stop:
+    zoom_match("kind", {7: {"river": 0.8}, 16: {"river": 4}}, {7: 0.3, 16: 1.2})
+    """
+    out = ["interpolate", ["linear"], ["zoom"]]
+    for z, by_value in stops.items():
+        m = ["match", ["get", prop]]
+        for value, width in by_value.items():
+            m += [value, width]
+        out += [z, m + [default[z]]]
+    return out
+
+
 LAYERS = [
     layer("paper", "base", "background", paint={"background-color": PAPER}),
 
@@ -53,6 +69,25 @@ LAYERS = [
     layer("water", "water", "fill", "water",
           paint={"fill-color": ["match", ["get", "kind"], "glacier", "#eef6fb", WATER],
                  "fill-outline-color": ["match", ["get", "kind"], "glacier", "#9fc4dc", WATER_LINE]}),
+    layer("waterways", "water", "line", "waterways",
+          layout={"line-cap": "round", "line-join": "round"},
+          paint={"line-color": WATER_LINE,
+                 "line-width": zoom_match("kind", {7: {"river": 0.8, "stream": 0.2}, 10: {"river": 1.4, "stream": 0.3},
+                                                   12: {"river": 2, "stream": 0.7}, 16: {"river": 4, "stream": 1.6}},
+                                          {7: 0.3, 10: 0.4, 12: 0.7, 16: 1.2}),
+                 "line-dasharray": ["case", ["get", "intermittent"], ["literal", [3, 2]], ["literal", [1, 0]]]}),
+
+    # ---- paved roads (casing under fill)
+    layer("roads-casing", "roads", "line", "roads", minzoom=10,
+          layout={"line-cap": "round", "line-join": "round"},
+          paint={"line-color": "#9a8f80",
+                 "line-width": zoom_match("kind", {10: {"highway": 3, "major": 2.4}, 16: {"highway": 9, "major": 7}},
+                                          {10: 1.4, 16: 5})}),
+    layer("roads", "roads", "line", "roads",
+          layout={"line-cap": "round", "line-join": "round"},
+          paint={"line-color": ["match", ["get", "kind"], "highway", "#e3843c", "major", "#f3c35a", "#ffffff"],
+                 "line-width": zoom_match("kind", {5: {"highway": 0.8, "major": 0.4}, 10: {"highway": 2, "major": 1.4},
+                                                   16: {"highway": 7, "major": 5.4}}, {5: 0.2, 10: 0.5, 16: 3.6})}),
 ]
 
 
