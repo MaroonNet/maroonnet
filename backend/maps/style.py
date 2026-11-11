@@ -9,6 +9,7 @@ PAPER = "#f4f1e8"
 WATER, WATER_LINE, WATER_TEXT = "#a9cfe6", "#3f8fc4", "#2a6a99"
 TRAIL, TRAIL_PAVED = "#b3261e", "#8c8c8c"
 TRACK, FOUR_WD, DIRT = "#8a5a2b", "#2f2418", "#b08850"
+PEAK_TEXT = "#4a3426"
 HALO = "rgba(255,255,255,0.85)"  # the pale rim around label text that keeps it readable over lines
 
 SRC = "basemap"
@@ -54,6 +55,11 @@ def zoom_match(prop, stops, default):
             m += [value, width]
         out += [z, m + [default[z]]]
     return out
+
+
+def kind(*kinds):
+    """A filter: the feature's kind is one of these."""
+    return ["in", ["get", "kind"], ["literal", list(kinds)]]
 
 
 LAYERS = [
@@ -152,6 +158,56 @@ LAYERS = [
           layout={"symbol-placement": "line", "text-field": ["get", "name"], "text-font": FONT["italic"],
                   "text-size": 10.5, "symbol-spacing": 300, "text-max-angle": 60},
           paint={"text-color": TRAIL, "text-halo-color": HALO, "text-halo-width": 1.4}),
+
+    # ---- points: water features, SAR points, peaks, places (later layers win label collisions)
+    layer("water-points", "water", "symbol", "water_points",
+          layout={"icon-image": ["match", ["get", "kind"], "spring", "water", ""], "icon-size": 0.8,
+                  "text-field": ["match", ["get", "kind"], "ford", "ford", ["coalesce", ["get", "name"], ""]],
+                  "text-font": FONT["italic"], "text-size": 9.5, "text-offset": [0, 0.9], "text-anchor": "top"},
+          paint={"text-color": WATER_TEXT, "text-halo-color": HALO, "text-halo-width": 1.2}),
+    layer("sar-points-dot", "sar_points", "circle", "sar_points",
+          filter=kind("trailhead", "gate", "cave"),
+          paint={"circle-radius": ["match", ["get", "kind"], "trailhead", 5, 3],
+                 "circle-color": ["match", ["get", "kind"], "trailhead", "#2e7d32", "gate", "#6b6b6b", "#5a3d2b"],
+                 "circle-stroke-color": "#fff", "circle-stroke-width": 1.2}),
+    layer("sar-points", "sar_points", "symbol", "sar_points",
+          filter=["any", ["!=", ["get", "kind"], "mine"], [">=", ["zoom"], 13]],
+          layout={"icon-size": ["match", ["get", "kind"], "mine", 0.65, 0.9],
+                  "icon-image": ["match", ["get", "kind"],
+                                 "hut", "lodging", "shelter", "shelter", "campsite", "campsite",
+                                 "ranger_station", "ranger_station", "helipad", "heliport", "mine", "danger", ""],
+                  "text-field": ["match", ["get", "kind"],
+                                 "trailhead", ["coalesce", ["get", "name"], "Trailhead"],
+                                 "helipad", ["coalesce", ["get", "name"], "Helipad"],
+                                 "mine", ["coalesce", ["get", "name"], "Mine"],
+                                 "gate", "",
+                                 ["coalesce", ["get", "name"], ""]],
+                  "text-font": FONT["regular"], "text-size": 10, "text-offset": [0, 1], "text-anchor": "top",
+                  "text-optional": True},
+          paint={"text-color": "#333", "text-halo-color": HALO, "text-halo-width": 1.2}),
+    layer("peaks", "peaks", "symbol", "peaks",
+          layout={"icon-image": ["match", ["get", "kind"], "peak", "triangle", ""], "icon-size": 0.9,
+                  "text-field": ["format",
+                                 ["case", ["==", ["get", "kind"], "peak"], ["coalesce", ["get", "name"], ""],
+                                  ["concat", ["coalesce", ["get", "name"], ""], ["case", ["has", "name"], " ", ""], "(pass)"]], {},
+                                 "\n", {},
+                                 ["case", ["has", "ele_ft"],
+                                  ["concat", ["number-format", ["get", "ele_ft"], {"locale": "en-US"}], " ft"], ""],
+                                 {"font-scale": 0.85}],
+                  "text-font": FONT["regular"], "text-size": 11, "text-anchor": "top", "text-offset": [0, 0.6],
+                  # higher peaks win when labels collide
+                  "symbol-sort-key": ["-", ["coalesce", ["get", "ele_ft"], 0]]},
+          paint={"text-color": PEAK_TEXT, "text-halo-color": HALO, "text-halo-width": 1.4}),
+    layer("places", "places", "symbol", "places",
+          layout={"text-field": ["get", "name"],
+                  "text-font": ["match", ["get", "kind"], "city", ["literal", FONT["bold"]],
+                                "locality", ["literal", FONT["italic"]], ["literal", FONT["regular"]]],
+                  "text-size": ["match", ["get", "kind"], "city", 14, "town", 12.5, "village", 11.5, "locality", 10, 10.5],
+                  "text-transform": ["match", ["get", "kind"], "locality", "none", "uppercase"],
+                  "text-letter-spacing": 0.04, "text-max-width": 8,
+                  "symbol-sort-key": ["match", ["get", "kind"], "city", 0, "town", 1, "village", 2, "hamlet", 3, 4]},
+          paint={"text-color": ["match", ["get", "kind"], "locality", "#5a4a3a", "#222"],
+                 "text-halo-color": HALO, "text-halo-width": 1.6}),
 ]
 
 
