@@ -165,6 +165,9 @@ def build_style(origin: str) -> dict:
         "version": 8,
         "name": "MaroonNet SAR",
         "font-faces": font_faces(origin),
+        # OpenFreeMap's icon sheet (MIT; its icons are Maki, CC0: assets/sprites/LICENSE.md).
+        # MapLibre adds .json, .png and @2x to this address; to swap sheets, change this line (D12).
+        "sprite": f"{origin}/maps/sprites/ofm",
         "sources": {
             SRC: {"type": "vector", "tiles": [f"{origin}/tiles/basemap/{{z}}/{{x}}/{{y}}"],
                   "minzoom": 0, "maxzoom": BASEMAP_MAX_ZOOM},

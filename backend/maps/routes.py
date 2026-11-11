@@ -66,3 +66,8 @@ def style(request: Request):
 @router.get("/maps/fonts/{name}")
 def font(name: str):
     return serve_asset("fonts", name)
+
+
+@router.get("/maps/sprites/{name}")
+def sprite(name: str):
+    return serve_asset("sprites", name)
