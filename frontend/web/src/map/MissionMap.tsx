@@ -89,8 +89,8 @@ function MissionMap() {
     }
     const notes = style.metadata as StyleNotes  // the backend always sets it
     // A trail open to any ticked use is drawn.
-    const pickedRules = notes.trail_uses.filter((use) => pickedUses.includes(use.id)).map((use) => use.filter)
-    const trailFilter = pickedRules.length ? ['any', ...pickedRules] as FilterSpecification : undefined
+    const pickedFilters = notes.trail_uses.filter((use) => pickedUses.includes(use.id)).map((use) => use.filter)
+    const trailFilter = pickedFilters.length ? ['any', ...pickedFilters] as FilterSpecification : undefined
     return (
         <Map
             initialViewState={INITIAL_VIEW}

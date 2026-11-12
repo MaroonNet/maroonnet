@@ -29,9 +29,9 @@ GROUPS = {
     "places": "Towns & named places",
 }
 
-# Uses the user can narrow the trails to: each has a label and a filter, a rule that reads the
-# trail's OpenStreetMap tags. The web app adds the rule to each trail layer's own filter.
-# OpenStreetMap tag values that mean a use is allowed. "literal" marks the list as plain data, not a rule.
+# Uses the user can narrow the trails to: each has a label and a filter, a condition on the
+# trail's OpenStreetMap tags. The web app adds it to each trail layer's own filter.
+# OpenStreetMap tag values that mean a use is allowed. "literal" marks the list as plain data, not a condition.
 ALLOWED = ["literal", ["yes", "designated", "permissive", "open"]]
 TRAIL_USES = {
     # foot is not "no" or "private". A trail with no foot tag counts as allowed.
@@ -293,7 +293,7 @@ def build_style(origin: str, terrain_max_zoom: int) -> dict:
         # Notes MapLibre ignores. The web app builds its layer and trail-use checkboxes from them.
         "metadata": {
             "groups": [{"id": group, "label": label} for group, label in GROUPS.items()],
-            "trail_uses": [{"id": use, "label": label, "filter": rule} for use, (label, rule) in TRAIL_USES.items()],
+            "trail_uses": [{"id": use, "label": label, "filter": use_filter} for use, (label, use_filter) in TRAIL_USES.items()],
         },
         "font-faces": font_faces(origin),
         # OpenFreeMap's icon sheet (MIT; its icons are Maki, CC0: assets/sprites/LICENSE.md).
