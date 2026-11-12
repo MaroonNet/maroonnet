@@ -38,11 +38,14 @@ def font_faces(origin: str) -> dict:
             "Noto Sans Italic": files("400-italic")}
 
 
-def layer(id, group, type, source_layer=None, **spec):
-    """One style layer. source_layer names the layer inside the basemap tiles that it draws."""
+def layer(id, group, type, source_layer=None, source=None, **spec):
+    """One style layer. source names the data it draws from: the basemap unless given.
+    source_layer names the part of that source's tiles it reads."""
     out = {"id": id, "type": type, "metadata": {"group": group}}
+    if source or source_layer:
+        out["source"] = source or SRC
     if source_layer:
-        out |= {"source": SRC, "source-layer": source_layer}
+        out["source-layer"] = source_layer
     return out | spec
 
 
@@ -97,9 +100,9 @@ LAYERS = [
                                     "wilderness", ["literal", [4, 2]], ["literal", [1, 0]]]}),
 
     # ---- terrain: shading drawn from heights, lit from the north-west
-    {"id": "hillshade", "type": "hillshade", "source": "terrain", "metadata": {"group": "hillshade"},
-     "paint": {"hillshade-exaggeration": 0.45, "hillshade-shadow-color": "rgba(60,50,40,0.55)",
-               "hillshade-highlight-color": "rgba(255,255,255,0.25)"}},
+    layer("hillshade", "hillshade", "hillshade", source="terrain",
+          paint={"hillshade-exaggeration": 0.45, "hillshade-shadow-color": "rgba(60,50,40,0.55)",
+                 "hillshade-highlight-color": "rgba(255,255,255,0.25)"}),
 
     # ---- water
     layer("water", "water", "fill", "water",
@@ -114,12 +117,12 @@ LAYERS = [
                  "line-dasharray": ["case", ["get", "intermittent"], ["literal", [3, 2]], ["literal", [1, 0]]]}),
 
     # ---- contours: a thin line at every interval, a thicker index line every fifth
-    {"id": "contours-minor", "type": "line", "source": "contours", "source-layer": "contours",
-     "metadata": {"group": "contours"}, "filter": ["==", ["get", "level"], 0],
-     "paint": {"line-color": CONTOUR, "line-opacity": 0.55, "line-width": 0.7}},
-    {"id": "contours-index", "type": "line", "source": "contours", "source-layer": "contours",
-     "metadata": {"group": "contours"}, "filter": [">", ["get", "level"], 0],
-     "paint": {"line-color": CONTOUR_INDEX, "line-opacity": 0.9, "line-width": 1.4}},
+    layer("contours-minor", "contours", "line", "contours", source="contours",
+          filter=["==", ["get", "level"], 0],
+          paint={"line-color": CONTOUR, "line-opacity": 0.55, "line-width": 0.7}),
+    layer("contours-index", "contours", "line", "contours", source="contours",
+          filter=[">", ["get", "level"], 0],
+          paint={"line-color": CONTOUR_INDEX, "line-opacity": 0.9, "line-width": 1.4}),
 
     # ---- paved roads (casing under fill)
     layer("roads-casing", "roads", "line", "roads", minzoom=10,
@@ -166,11 +169,11 @@ LAYERS = [
                   "text-max-width": 9, "text-letter-spacing": 0.05},
           paint={"text-color": ["match", ["get", "designation"], "blm", "#8a6a12", "#3d6e2f"],
                  "text-halo-color": HALO, "text-halo-width": 1.2}),
-    {"id": "contour-labels", "type": "symbol", "source": "contour_labels", "source-layer": "contours",
-     "metadata": {"group": "contours"}, "filter": [">", ["get", "level"], 0],
-     "layout": {"symbol-placement": "line", "text-field": ["to-string", ["get", "ele"]], "text-font": FONT["regular"],
-                "text-size": 10, "text-max-angle": 120, "symbol-spacing": 400},
-     "paint": {"text-color": CONTOUR_INDEX, "text-halo-color": HALO, "text-halo-width": 1.2}},
+    layer("contour-labels", "contours", "symbol", "contours", source="contour_labels",
+          filter=[">", ["get", "level"], 0],
+          layout={"symbol-placement": "line", "text-field": ["to-string", ["get", "ele"]], "text-font": FONT["regular"],
+                  "text-size": 10, "text-max-angle": 120, "symbol-spacing": 400},
+          paint={"text-color": CONTOUR_INDEX, "text-halo-color": HALO, "text-halo-width": 1.2}),
     layer("road-labels", "roads", "symbol", "roads", minzoom=11,
           filter=["any", ["has", "name"], ["has", "ref"]],
           layout={"symbol-placement": "line", "text-field": ["coalesce", ["get", "ref"], ["get", "name"]],
