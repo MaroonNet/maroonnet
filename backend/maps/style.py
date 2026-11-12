@@ -29,6 +29,13 @@ GROUPS = {
     "places": "Towns & named places",
 }
 
+# Uses the user can narrow the trails to: each has a label and a filter, a rule that reads the
+# trail's OpenStreetMap tags. The web app adds the rule to each trail layer's own filter.
+TRAIL_USES = {
+    # foot is not "no" or "private". A trail with no foot tag counts as allowed.
+    "hiking": ("Hiking allowed", ["!", ["in", ["coalesce", ["get", "foot"], "yes"], ["literal", ["no", "private"]]]]),
+}
+
 SRC = "basemap"
 BASEMAP_MAX_ZOOM = 14  # the basemap is built to zoom 14 (D16); MapLibre enlarges its tiles beyond that
 
@@ -267,8 +274,11 @@ def build_style(origin: str, terrain_max_zoom: int) -> dict:
     return {
         "version": 8,
         "name": "MaroonNet SAR",
-        # Notes MapLibre ignores. The web app builds its layer checkboxes from this list.
-        "metadata": {"groups": [{"id": group, "label": label} for group, label in GROUPS.items()]},
+        # Notes MapLibre ignores. The web app builds its layer checkboxes and trail-use choice from them.
+        "metadata": {
+            "groups": [{"id": group, "label": label} for group, label in GROUPS.items()],
+            "trail_uses": [{"id": use, "label": label, "filter": rule} for use, (label, rule) in TRAIL_USES.items()],
+        },
         "font-faces": font_faces(origin),
         # OpenFreeMap's icon sheet (MIT; its icons are Maki, CC0: assets/sprites/LICENSE.md).
         # MapLibre adds .json, .png and @2x to this address; to swap sheets, change this line (D12).

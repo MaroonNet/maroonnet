@@ -1,4 +1,4 @@
-import { addProtocol, setWorkerUrl, type LayerSpecification, type RasterDEMSourceSpecification, type StyleSpecification } from "maplibre-gl"
+import { addProtocol, setWorkerUrl, type FilterSpecification, type LayerSpecification, type RasterDEMSourceSpecification, type StyleSpecification } from "maplibre-gl"
 import { useState } from 'react'
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import mlcontour from 'maplibre-contour'
@@ -6,7 +6,7 @@ import Map, { NavigationControl, ScaleControl } from 'react-map-gl/maplibre'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { sendError } from '../diagnostics/errorLog'
 import { INITIAL_VIEW, MAP_STYLE_URL, MAX_ZOOM } from "./config"
-import LayerToggles, { type LayerGroup } from './LayerToggles'
+import LayerToggles, { type LayerGroup, type TrailUse } from './LayerToggles'
 
 setWorkerUrl(workerUrl)
 
@@ -47,15 +47,37 @@ function hideGroups(style: StyleSpecification, hidden: string[]): StyleSpecifica
     return {
         ...style,
         layers: style.layers.map((layer) => {
-            const group = (layer.metadata as { group?: string } | undefined)?.group
+            const group = groupOf(layer)
             if (!group || !hidden.includes(group)) return layer
             return { ...layer, layout: { ...layer.layout, visibility: 'none' } } as LayerSpecification
         }),
     }
 }
 
+// A copy of the style whose trail layers draw only the trails that also pass the given filter.
+// Each layer keeps its own filter, so a trail must pass both.
+function narrowTrails(style: StyleSpecification, filter: FilterSpecification | undefined): StyleSpecification {
+    if (!filter) return style
+    return {
+        ...style,
+        layers: style.layers.map((layer) => {
+            if (groupOf(layer) !== 'trails') return layer
+            const own = (layer as { filter?: FilterSpecification }).filter
+            return { ...layer, filter: own ? ['all', own, filter] : filter } as LayerSpecification
+        }),
+    }
+}
+
+function groupOf(layer: LayerSpecification): string | undefined {
+    return (layer.metadata as { group?: string } | undefined)?.group
+}
+
+// What the backend lists in the style's metadata (backend/maps/style.py).
+type StyleNotes = { groups: LayerGroup[], trail_uses: TrailUse[] }
+
 function MissionMap() {
     const [hidden, setHidden] = useState<string[]>([])  // the layer groups the user has hidden
+    const [trailUse, setTrailUse] = useState<string | null>(null)  // null: all trails
 
     if (!style) {
         return (
@@ -65,10 +87,12 @@ function MissionMap() {
             </p>
         )
     }
+    const notes = style.metadata as StyleNotes  // the backend always sets it
+    const trailFilter = notes.trail_uses.find((use) => use.id === trailUse)?.filter
     return (
         <Map
             initialViewState={INITIAL_VIEW}
-            mapStyle={hideGroups(style, hidden)}
+            mapStyle={narrowTrails(hideGroups(style, hidden), trailFilter)}
             maxZoom={MAX_ZOOM}
             style={{width: '100%', height: '100%'}}
             onError={(e) => {
@@ -82,9 +106,12 @@ function MissionMap() {
             <NavigationControl position="top-right" />
             <ScaleControl />
             <LayerToggles
-                groups={(style.metadata as { groups: LayerGroup[] }).groups}  // the backend always sets it
+                groups={notes.groups}
                 hidden={hidden}
                 setHidden={setHidden}
+                trailUses={notes.trail_uses}
+                trailUse={trailUse}
+                setTrailUse={setTrailUse}
             />
         </Map>
     )
