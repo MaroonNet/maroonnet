@@ -3,6 +3,7 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import mlcontour from 'maplibre-contour'
 import Map, { NavigationControl, ScaleControl } from 'react-map-gl/maplibre'
 import 'maplibre-gl/dist/maplibre-gl.css'
+import { sendError } from '../diagnostics/errorLog'
 import { INITIAL_VIEW, MAP_STYLE_URL, MAX_ZOOM } from "./config"
 
 setWorkerUrl(workerUrl)
@@ -26,6 +27,8 @@ const demSource = new mlcontour.DemSource({
 })
 demSource.setupMaplibre({ addProtocol })
 
+let tileErrorSent = false  // a tile failure repeats for every tile, so only the first is sent
+
 function MissionMap() {
     return (
         <Map
@@ -33,6 +36,13 @@ function MissionMap() {
             mapStyle={style}
             maxZoom={MAX_ZOOM}
             style={{width: '100%', height: '100%'}}
+            onError={(e) => {
+                if ('tile' in e) {
+                    if (tileErrorSent) return
+                    tileErrorSent = true
+                }
+                sendError('map', e.error?.stack ?? e.error)
+            }}
         >
             <NavigationControl position="top-right" />
             <ScaleControl />
