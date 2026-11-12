@@ -96,6 +96,7 @@ function MissionMap() {
             initialViewState={INITIAL_VIEW}
             mapStyle={narrowTrails(hideGroups(style, hidden), trailFilter)}
             maxZoom={MAX_ZOOM}
+            attributionControl={{ compact: true }}  // the data credits only, without MapLibre's own link
             style={{width: '100%', height: '100%'}}
             onError={(e) => {
                 console.error(e.error)  // every error, as react-map-gl prints when there is no onError
