@@ -81,3 +81,16 @@ def test_style_survives_a_bad_terrain_pack(tmp_path, client, monkeypatch):
     junk.write_bytes(b"not a pack")
     monkeypatch.setenv(TERRAIN_SETTING, str(junk))
     assert get_style(client)["sources"]["terrain"]["maxzoom"] == 12
+
+
+def test_every_layer_draws_from_a_source_in_the_style(client):
+    style = get_style(client)
+    sources = style["sources"]
+    for layer in style["layers"]:
+        if "source" not in layer:
+            continue  # the background colour
+        assert layer["source"] in sources, layer["id"]
+        # Contour tiles are made in the browser and hold one layer, named in their address.
+        made = re.search(r"contourLayer=(\w+)", sources[layer["source"]]["tiles"][0])
+        if made:
+            assert layer["source-layer"] == made.group(1), layer["id"]
