@@ -6,7 +6,7 @@ import Map, { NavigationControl, ScaleControl } from 'react-map-gl/maplibre'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { sendError } from '../diagnostics/errorLog'
 import { INITIAL_VIEW, MAP_STYLE_URL, MAX_ZOOM } from "./config"
-import LayerToggles from './LayerToggles'
+import LayerToggles, { type LayerGroup } from './LayerToggles'
 
 setWorkerUrl(workerUrl)
 
@@ -81,7 +81,11 @@ function MissionMap() {
         >
             <NavigationControl position="top-right" />
             <ScaleControl />
-            <LayerToggles hidden={hidden} setHidden={setHidden} />
+            <LayerToggles
+                groups={(style.metadata as { groups: LayerGroup[] }).groups}  // the backend always sets it
+                hidden={hidden}
+                setHidden={setHidden}
+            />
         </Map>
     )
 }

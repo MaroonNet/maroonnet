@@ -13,6 +13,22 @@ CONTOUR, CONTOUR_INDEX = "#a0703f", "#7d4f22"
 PEAK_TEXT = "#4a3426"
 HALO = "rgba(255,255,255,0.85)"  # the pale rim around label text that keeps it readable over lines
 
+# The layer groups the user can hide, with each checkbox's label, in the order the web app lists
+# them. Every layer's group is one of these, or "base" (the background, which is never hidden).
+GROUPS = {
+    "trails": "Trails",
+    "backroads": "4WD & dirt roads",
+    "roads": "Paved roads",
+    "water": "Rivers, streams & lakes",
+    "peaks": "Peaks & passes",
+    "contours": "Contours",
+    "hillshade": "Hillshade",
+    "public_land": "Public land (forest, wilderness, BLM)",
+    "landcover": "Vegetation",
+    "sar_points": "Trailheads, huts, camps, helipads",
+    "places": "Towns & named places",
+}
+
 SRC = "basemap"
 BASEMAP_MAX_ZOOM = 14  # the basemap is built to zoom 14 (D16); MapLibre enlarges its tiles beyond that
 
@@ -251,6 +267,8 @@ def build_style(origin: str, terrain_max_zoom: int) -> dict:
     return {
         "version": 8,
         "name": "MaroonNet SAR",
+        # Notes MapLibre ignores. The web app builds its layer checkboxes from this list.
+        "metadata": {"groups": [{"id": group, "label": label} for group, label in GROUPS.items()]},
         "font-faces": font_faces(origin),
         # OpenFreeMap's icon sheet (MIT; its icons are Maki, CC0: assets/sprites/LICENSE.md).
         # MapLibre adds .json, .png and @2x to this address; to swap sheets, change this line (D12).

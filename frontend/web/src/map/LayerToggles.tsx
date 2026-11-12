@@ -1,24 +1,29 @@
+export type LayerGroup = { id: string, label: string }  // as listed in the style's metadata.groups
+
 type Props = {
+    groups: LayerGroup[]
     hidden: string[]                          // the layer groups the user has hidden
     setHidden: (hidden: string[]) => void
 }
 
 // Checkboxes that hide and show groups of map layers (each layer's metadata.group in the style).
-function LayerToggles({ hidden, setHidden }: Props) {
+function LayerToggles({ groups, hidden, setHidden }: Props) {
     function toggle(group: string, shown: boolean) {
         setHidden(shown ? hidden.filter((g) => g !== group) : [...hidden, group])
     }
 
     return (
         <div style={panelStyle}>
-            <label>
-                <input
-                    type="checkbox"
-                    checked={!hidden.includes('trails')}
-                    onChange={(e) => toggle('trails', e.target.checked)}
-                />
-                Trails
-            </label>
+            {groups.map((group) => (
+                <label key={group.id} style={{ display: 'block' }}>
+                    <input
+                        type="checkbox"
+                        checked={!hidden.includes(group.id)}
+                        onChange={(e) => toggle(group.id, e.target.checked)}
+                    />
+                    {group.label}
+                </label>
+            ))}
         </div>
     )
 }
