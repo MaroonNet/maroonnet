@@ -104,7 +104,7 @@ function MissionMap() {
                     if (tileErrorSent) return
                     tileErrorSent = true
                 }
-                sendError('map', e.error?.stack ?? e.error)
+                sendError('map', e.error)
             }}
         >
             <NavigationControl position="top-right" />
