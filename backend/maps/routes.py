@@ -7,7 +7,7 @@ import re
 from fastapi import APIRouter, HTTPException, Path, Request, Response
 from fastapi.responses import FileResponse
 
-from .packs import open_pack
+from .packs import Pack, open_pack
 from .style import build_style
 
 router = APIRouter()
@@ -33,14 +33,19 @@ Column = Path(ge=0)
 Row = Path(ge=0)
 
 
-def serve_tile(setting: str, z: int, x: int, y: int) -> Response:
+def pack_for(setting: str) -> Pack:
+    """The pack a setting names. Answers 503, saying why, if the setting is unset or unusable."""
     path = os.environ.get(setting)
     if not path:
         raise HTTPException(503, f"{setting} is not set")
     try:
-        pack = open_pack(path)
-    except FileNotFoundError:
-        raise HTTPException(503, f"{setting} names a file that does not exist: {path}")
+        return open_pack(path)
+    except Exception as error:  # missing, a folder, unreadable, or not a pack at all
+        raise HTTPException(503, f"{setting} does not name a usable pack: {path} ({error!r})")
+
+
+def serve_tile(setting: str, z: int, x: int, y: int) -> Response:
+    pack = pack_for(setting)
     data = pack.tile(z, x, y)
     if data is None:
         raise HTTPException(404, "the pack has no such tile")
@@ -71,11 +76,10 @@ DEFAULT_TERRAIN_MAX_ZOOM = 12
 
 
 def terrain_max_zoom() -> int:
-    """The terrain pack's last zoom, read from its own header."""
-    path = os.environ.get(TERRAIN_SETTING)
+    """The terrain pack's last zoom, read from its own header. A bad pack must not break the style."""
     try:
-        return open_pack(path).max_zoom if path else DEFAULT_TERRAIN_MAX_ZOOM
-    except FileNotFoundError:
+        return pack_for(TERRAIN_SETTING).max_zoom
+    except HTTPException:
         return DEFAULT_TERRAIN_MAX_ZOOM
 
 

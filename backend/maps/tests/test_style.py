@@ -74,3 +74,10 @@ def test_terrain_max_zoom_comes_from_the_pack(make_pack, client, monkeypatch):
 def test_terrain_max_zoom_without_a_pack(client, monkeypatch):
     monkeypatch.delenv(TERRAIN_SETTING, raising=False)
     assert get_style(client)["sources"]["terrain"]["maxzoom"] == 12
+
+
+def test_style_survives_a_bad_terrain_pack(tmp_path, client, monkeypatch):
+    junk = tmp_path / "junk.pmtiles"
+    junk.write_bytes(b"not a pack")
+    monkeypatch.setenv(TERRAIN_SETTING, str(junk))
+    assert get_style(client)["sources"]["terrain"]["maxzoom"] == 12
