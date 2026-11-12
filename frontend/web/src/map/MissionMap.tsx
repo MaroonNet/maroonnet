@@ -73,7 +73,7 @@ function groupOf(layer: LayerSpecification): string | undefined {
 }
 
 // What the backend lists in the style's metadata (backend/maps/style.py).
-type StyleNotes = { groups: LayerGroup[], trail_uses: TrailUse[] }
+type StyleMetadata = { groups: LayerGroup[], trail_uses: TrailUse[] }
 
 function MissionMap() {
     const [hidden, setHidden] = useState<string[]>([])  // the layer groups the user has hidden
@@ -87,9 +87,9 @@ function MissionMap() {
             </p>
         )
     }
-    const notes = style.metadata as StyleNotes  // the backend always sets it
+    const metadata = style.metadata as StyleMetadata  // the backend always sets it
     // A trail open to any ticked use is drawn.
-    const pickedFilters = notes.trail_uses.filter((use) => pickedUses.includes(use.id)).map((use) => use.filter)
+    const pickedFilters = metadata.trail_uses.filter((use) => pickedUses.includes(use.id)).map((use) => use.filter)
     const trailFilter = pickedFilters.length ? ['any', ...pickedFilters] as FilterSpecification : undefined
     return (
         <Map
@@ -110,10 +110,10 @@ function MissionMap() {
             <NavigationControl position="top-right" />
             <ScaleControl />
             <LayerToggles
-                groups={notes.groups}
+                groups={metadata.groups}
                 hidden={hidden}
                 setHidden={setHidden}
-                trailUses={notes.trail_uses}
+                trailUses={metadata.trail_uses}
                 pickedUses={pickedUses}
                 setPickedUses={setPickedUses}
             />
