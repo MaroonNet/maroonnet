@@ -13,6 +13,45 @@ CONTOUR, CONTOUR_INDEX = "#a0703f", "#7d4f22"
 PEAK_TEXT = "#4a3426"
 HALO = "rgba(255,255,255,0.85)"  # the pale rim around label text that keeps it readable over lines
 
+# The layer groups the user can hide, with each checkbox's label, in the order the web app lists
+# them. Every layer's group is one of these, or "base" (the background, which is never hidden).
+GROUPS = {
+    "trails": "Trails",
+    "backroads": "4WD & dirt roads",
+    "roads": "Paved roads",
+    "water": "Rivers, streams & lakes",
+    "peaks": "Peaks & passes",
+    "contours": "Contours",
+    "hillshade": "Hillshade",
+    "public_land": "Public land (forest, wilderness, BLM)",
+    "landcover": "Vegetation",
+    "sar_points": "Trailheads, huts, camps, helipads",
+    "places": "Towns & named places",
+}
+
+# Uses the user can narrow the trails to: each has a label and a filter, a condition on the
+# trail's OpenStreetMap tags. The web app adds it to each trail layer's own filter.
+# OpenStreetMap tag values that mean a use is allowed. "literal" marks the list as plain data, not a condition.
+ALLOWED = ["literal", ["yes", "designated", "permissive", "open"]]
+TRAIL_USES = {
+    # foot is not "no" or "private". A trail with no foot tag counts as allowed.
+    "hiking": ("Hiking allowed", ["!", ["in", ["coalesce", ["get", "foot"], "yes"], ["literal", ["no", "private"]]]]),
+    # The uses below need their tag set to an allowed value. A trail without the tag is not drawn.
+    "horse": ("Horse allowed", ["in", ["get", "horse"], ALLOWED]),
+    # A bicycle tag that allows bikes, or an mtb_scale tag (OpenStreetMap's mountain-bike difficulty rating).
+    "bike":("Bike allowed", ["any", ["in", ["get", "bicycle"], ALLOWED], ["has", "mtb_scale"]]),
+    "motorized": ("Motorcycle / ATV allowed", ["any", ["in", ["get", "motorcycle"], ALLOWED],
+                                               ["in", ["get", "atv"], ALLOWED],
+                                               ["in", ["get", "motor_vehicle"], ALLOWED]]),
+}
+
+# Credits the data's licences require on the map, set on each source. Plain text, not links: the map
+# works offline, and the style names no internet addresses. The terrain credit is the wording the
+# Copernicus licence requires; the US terrain (USGS) is public domain and needs none.
+OSM_CREDIT = "© OpenStreetMap contributors"
+TERRAIN_CREDIT = ("Terrain: DLR e.V. 2010-2014, Airbus Defence and Space GmbH 2014-2018, "
+                  "provided under COPERNICUS by the European Union and ESA. All rights reserved.")
+
 SRC = "basemap"
 BASEMAP_MAX_ZOOM = 14  # the basemap is built to zoom 14 (D16); MapLibre enlarges its tiles beyond that
 
@@ -251,23 +290,32 @@ def build_style(origin: str, terrain_max_zoom: int) -> dict:
     return {
         "version": 8,
         "name": "MaroonNet SAR",
+        # Notes MapLibre ignores. The web app builds its layer and trail-use checkboxes from them.
+        "metadata": {
+            "groups": [{"id": group, "label": label} for group, label in GROUPS.items()],
+            "trail_uses": [{"id": use, "label": label, "filter": use_filter} for use, (label, use_filter) in TRAIL_USES.items()],
+        },
         "font-faces": font_faces(origin),
         # OpenFreeMap's icon sheet (MIT; its icons are Maki, CC0: assets/sprites/LICENSE.md).
         # MapLibre adds .json, .png and @2x to this address; to swap sheets, change this line (D12).
         "sprite": f"{origin}/maps/sprites/ofm",
         "sources": {
             SRC: {"type": "vector", "tiles": [f"{origin}/tiles/basemap/{{z}}/{{x}}/{{y}}"],
-                  "minzoom": 0, "maxzoom": BASEMAP_MAX_ZOOM},
+                  "minzoom": 0, "maxzoom": BASEMAP_MAX_ZOOM, "attribution": OSM_CREDIT},
             # Heights stored as colours (Terrarium encoding) in 512-pixel tiles, as Mapterhorn makes them.
             # dem-shared:// is answered by the contour plug-in, not the network. It downloads each tile once
             # and shares it between the hillshade and the contour lines.
             "terrain": {"type": "raster-dem", "tiles": ["dem-shared://{z}/{x}/{y}"],
-                        "encoding": "terrarium", "tileSize": 512, "maxzoom": terrain_max_zoom},
-            "contours": {"type": "vector", "tiles": [CONTOUR_URL], "maxzoom": CONTOUR_MAX_ZOOM},
+                        "encoding": "terrarium", "tileSize": 512, "maxzoom": terrain_max_zoom,
+                        "attribution": TERRAIN_CREDIT},
+            # The contour sources carry the terrain credit too: MapLibre shows a source's credit only
+            # while a visible layer uses it, and contours can be shown with the hillshade hidden.
+            "contours": {"type": "vector", "tiles": [CONTOUR_URL], "maxzoom": CONTOUR_MAX_ZOOM,
+                         "attribution": TERRAIN_CREDIT},
             # A copy of the contour lines traced one zoom coarser (overzoom=1), used only to place labels.
             # Text cannot follow the full-detail lines' sharp bends, so most labels would be dropped.
             "contour_labels": {"type": "vector", "tiles": [CONTOUR_URL + "&overzoom=1"],
-                               "maxzoom": CONTOUR_MAX_ZOOM},
+                               "maxzoom": CONTOUR_MAX_ZOOM, "attribution": TERRAIN_CREDIT},
         },
         "layers": LAYERS,
     }

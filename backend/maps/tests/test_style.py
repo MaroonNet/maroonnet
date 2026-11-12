@@ -31,6 +31,28 @@ def test_every_layer_has_a_group_and_its_own_id(client):
     assert len(ids) == len(set(ids))
 
 
+def test_layer_groups_match_the_checkbox_list(client):
+    """Every layer's group has a checkbox, and every checkbox hides at least one layer.
+    A misspelled group breaks one or the other."""
+    style = get_style(client)
+    listed = {group["id"] for group in style["metadata"]["groups"]}
+    used = {layer["metadata"]["group"] for layer in style["layers"]} - {"base"}  # base is never hidden
+    assert used == listed
+
+
+COPERNICUS_CREDIT = ("DLR e.V. 2010-2014, Airbus Defence and Space GmbH 2014-2018, "
+                     "provided under COPERNICUS by the European Union and ESA. All rights reserved.")
+
+
+def test_style_carries_the_required_credits(client):
+    """The OpenStreetMap and Copernicus licences require these credits. Terrain
+    shows through the hillshade or the contours, so every terrain source carries its credit."""
+    sources = get_style(client)["sources"]
+    assert "© OpenStreetMap contributors" in sources["basemap"]["attribution"]
+    for name in ("terrain", "contours", "contour_labels"):
+        assert COPERNICUS_CREDIT in sources[name].get("attribution", ""), name
+
+
 def test_every_font_file_loads(client):
     faces = get_style(client)["font-faces"]
     for files in faces.values():
