@@ -21,6 +21,9 @@ BASEMAP_MAX_ZOOM = 14  # the basemap is built to zoom 14 (D16); MapLibre enlarge
 # spacing of the thin lines and of the thicker index lines: at zoom 12, every 100 ft and every 500 ft.
 CONTOUR_URL = ("dem-contour://{z}/{x}/{y}?contourLayer=contours&elevationKey=ele&levelKey=level"
                "&multiplier=3.28084&thresholds=10*500*2500~11*200*1000~12*100*500~14*40*200~15*20*100")
+# Contour lines are traced for zooms up to 15. At zoom 15 there is a line for every 20 ft of
+# height, the most detail we draw. At zooms 16 and 17 the map shows zoom 15's lines, drawn larger.
+CONTOUR_MAX_ZOOM = 15
 
 # Noto Sans, from @fontsource/noto-sans 5.3.0 (SIL Open Font License 1.1: assets/fonts/LICENSE).
 # The style's font-faces hand MapLibre the font files, and it draws the letters itself.
@@ -257,10 +260,11 @@ def build_style(origin: str, terrain_max_zoom: int) -> dict:
             # and shares it between the hillshade and the contour lines.
             "terrain": {"type": "raster-dem", "tiles": ["dem-shared://{z}/{x}/{y}"],
                         "encoding": "terrarium", "tileSize": 512, "maxzoom": terrain_max_zoom},
-            "contours": {"type": "vector", "tiles": [CONTOUR_URL], "maxzoom": 15},
+            "contours": {"type": "vector", "tiles": [CONTOUR_URL], "maxzoom": CONTOUR_MAX_ZOOM},
             # A copy of the contour lines traced one zoom coarser (overzoom=1), used only to place labels.
             # Text cannot follow the full-detail lines' sharp bends, so most labels would be dropped.
-            "contour_labels": {"type": "vector", "tiles": [CONTOUR_URL + "&overzoom=1"], "maxzoom": 15},
+            "contour_labels": {"type": "vector", "tiles": [CONTOUR_URL + "&overzoom=1"],
+                               "maxzoom": CONTOUR_MAX_ZOOM},
         },
         "layers": LAYERS,
     }
