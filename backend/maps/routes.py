@@ -1,16 +1,32 @@
 """The map backend's web routes."""
 
 import os
+import pathlib
+import re
 
-from fastapi import APIRouter, HTTPException, Path, Response
+from fastapi import APIRouter, HTTPException, Path, Request, Response
+from fastapi.responses import FileResponse
 
 from .packs import open_pack
+from .style import build_style
 
 router = APIRouter()
 
 # Until the CPA has settings (plan phase 2), each pack's path comes from an environment variable.
 BASEMAP_SETTING = "MAPS_BASEMAP_PACK"
 TERRAIN_SETTING = "MAPS_TERRAIN_PACK"
+
+# Fonts and the icon sheet ship with the code, so the map needs nothing from the internet.
+ASSETS = pathlib.Path(__file__).parent / "assets"
+
+# Asset file names may use only letters, digits and . - _ @ (as in ofm@2x.png), and may not
+# start with a dot. Any other name, such as "..\..\routes.py", could reach a file outside the
+# folder: on Windows a backslash separates folders, the same way "/" does.
+ASSET_NAME = re.compile(r"[A-Za-z0-9_@-][A-Za-z0-9._@-]*")
+
+
+def is_asset_name(name: str) -> bool:
+    return ASSET_NAME.fullmatch(name) is not None
 
 Zoom = Path(ge=0, le=30)
 Column = Path(ge=0)
@@ -33,6 +49,13 @@ def serve_tile(setting: str, z: int, x: int, y: int) -> Response:
     return Response(data, media_type=pack.media_type, headers=headers)
 
 
+def serve_asset(folder: str, name: str) -> FileResponse:
+    file = ASSETS / folder / name
+    if not is_asset_name(name) or not file.is_file():
+        raise HTTPException(404, "no such file")
+    return FileResponse(file)
+
+
 @router.get("/tiles/basemap/{z}/{x}/{y}")
 def basemap_tile(z: int = Zoom, x: int = Column, y: int = Row):
     return serve_tile(BASEMAP_SETTING, z, x, y)
@@ -41,3 +64,19 @@ def basemap_tile(z: int = Zoom, x: int = Column, y: int = Row):
 @router.get("/tiles/terrain/{z}/{x}/{y}")
 def terrain_tile(z: int = Zoom, x: int = Column, y: int = Row):
     return serve_tile(TERRAIN_SETTING, z, x, y)
+
+
+@router.get("/maps/style.json")
+def style(request: Request):
+    # The address this request came to, so the style points back at the same server.
+    return build_style(str(request.base_url).rstrip("/"))
+
+
+@router.get("/maps/fonts/{name}")
+def font(name: str):
+    return serve_asset("fonts", name)
+
+
+@router.get("/maps/sprites/{name}")
+def sprite(name: str):
+    return serve_asset("sprites", name)
