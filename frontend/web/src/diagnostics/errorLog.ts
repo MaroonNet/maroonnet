@@ -12,5 +12,6 @@ export function sendError(kind: string, detail: unknown) {
 // An error that no code caught.
 window.addEventListener('error', (e) => sendError('error', e.error?.stack ?? e.message))
 
-// A rejection: a failed promise (an answer that was waited for and never came) that no code handled.
+// A rejection: a promise (a placeholder for an answer still on its way) whose answer came back
+// as a failure, and no code handled it.
 window.addEventListener('unhandledrejection', (e) => sendError('rejection', e.reason?.stack ?? e.reason))
