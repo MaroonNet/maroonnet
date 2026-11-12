@@ -8,17 +8,13 @@ type Props = {
     hidden: string[]                          // the layer groups the user has hidden
     setHidden: (hidden: string[]) => void
     trailUses: TrailUse[]
-    trailUse: string | null                   // the use the trails are narrowed to; null: all trails
-    setTrailUse: (trailUse: string | null) => void
+    pickedUses: string[]                      // the trail uses ticked; none ticked: all trails
+    setPickedUses: (pickedUses: string[]) => void
 }
 
 // Checkboxes that hide and show groups of map layers (each layer's metadata.group in the style),
-// and a choice that narrows the trails to one use.
-function LayerToggles({ groups, hidden, setHidden, trailUses, trailUse, setTrailUse }: Props) {
-    function toggle(group: string, shown: boolean) {
-        setHidden(shown ? hidden.filter((g) => g !== group) : [...hidden, group])
-    }
-
+// and checkboxes that narrow the trails to the ones open to any ticked use.
+function LayerToggles({ groups, hidden, setHidden, trailUses, pickedUses, setPickedUses }: Props) {
     return (
         <div style={panelStyle}>
             {groups.map((group) => (
@@ -27,7 +23,7 @@ function LayerToggles({ groups, hidden, setHidden, trailUses, trailUse, setTrail
                         <input
                             type="checkbox"
                             checked={!hidden.includes(group.id)}
-                            onChange={(e) => toggle(group.id, e.target.checked)}
+                            onChange={(e) => setHidden(withOrWithout(hidden, group.id, !e.target.checked))}
                         />
                         {group.label}
                     </label>
@@ -35,8 +31,8 @@ function LayerToggles({ groups, hidden, setHidden, trailUses, trailUse, setTrail
                         <label key={use.id} style={{ display: 'block', marginLeft: 20 }}>
                             <input
                                 type="checkbox"
-                                checked={trailUse === use.id}
-                                onChange={(e) => setTrailUse(e.target.checked ? use.id : null)}
+                                checked={pickedUses.includes(use.id)}
+                                onChange={(e) => setPickedUses(withOrWithout(pickedUses, use.id, e.target.checked))}
                             />
                             {use.label}
                         </label>
@@ -45,6 +41,11 @@ function LayerToggles({ groups, hidden, setHidden, trailUses, trailUse, setTrail
             ))}
         </div>
     )
+}
+
+// The list with the item added (include) or taken out.
+function withOrWithout(list: string[], item: string, include: boolean): string[] {
+    return include ? [...list, item] : list.filter((x) => x !== item)
 }
 
 const panelStyle = {

@@ -77,7 +77,7 @@ type StyleNotes = { groups: LayerGroup[], trail_uses: TrailUse[] }
 
 function MissionMap() {
     const [hidden, setHidden] = useState<string[]>([])  // the layer groups the user has hidden
-    const [trailUse, setTrailUse] = useState<string | null>(null)  // null: all trails
+    const [pickedUses, setPickedUses] = useState<string[]>([])  // the trail uses ticked; none: all trails
 
     if (!style) {
         return (
@@ -88,7 +88,9 @@ function MissionMap() {
         )
     }
     const notes = style.metadata as StyleNotes  // the backend always sets it
-    const trailFilter = notes.trail_uses.find((use) => use.id === trailUse)?.filter
+    // A trail open to any ticked use is drawn.
+    const pickedRules = notes.trail_uses.filter((use) => pickedUses.includes(use.id)).map((use) => use.filter)
+    const trailFilter = pickedRules.length ? ['any', ...pickedRules] as FilterSpecification : undefined
     return (
         <Map
             initialViewState={INITIAL_VIEW}
@@ -110,8 +112,8 @@ function MissionMap() {
                 hidden={hidden}
                 setHidden={setHidden}
                 trailUses={notes.trail_uses}
-                trailUse={trailUse}
-                setTrailUse={setTrailUse}
+                pickedUses={pickedUses}
+                setPickedUses={setPickedUses}
             />
         </Map>
     )

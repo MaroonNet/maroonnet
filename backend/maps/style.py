@@ -31,9 +31,16 @@ GROUPS = {
 
 # Uses the user can narrow the trails to: each has a label and a filter, a rule that reads the
 # trail's OpenStreetMap tags. The web app adds the rule to each trail layer's own filter.
+ALLOWED = ["literal", ["yes", "designated", "permissive", "open"]]  # tag values that mean allowed
 TRAIL_USES = {
     # foot is not "no" or "private". A trail with no foot tag counts as allowed.
     "hiking": ("Hiking allowed", ["!", ["in", ["coalesce", ["get", "foot"], "yes"], ["literal", ["no", "private"]]]]),
+    # The uses below need their tag set to an allowed value. A trail without the tag is not drawn.
+    "horse": ("Horse allowed", ["in", ["get", "horse"], ALLOWED]),
+    "bike": ("Bike allowed", ["any", ["in", ["get", "bicycle"], ALLOWED], ["has", "mtb_scale"]]),
+    "motorized": ("Motorcycle / ATV allowed", ["any", ["in", ["get", "motorcycle"], ALLOWED],
+                                               ["in", ["get", "atv"], ALLOWED],
+                                               ["in", ["get", "motor_vehicle"], ALLOWED]]),
 }
 
 SRC = "basemap"
