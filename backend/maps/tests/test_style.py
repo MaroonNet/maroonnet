@@ -40,6 +40,19 @@ def test_layer_groups_match_the_checkbox_list(client):
     assert used == listed
 
 
+COPERNICUS_CREDIT = ("DLR e.V. 2010-2014, Airbus Defence and Space GmbH 2014-2018, "
+                     "provided under COPERNICUS by the European Union and ESA. All rights reserved.")
+
+
+def test_style_carries_the_required_credits(client):
+    """The OpenStreetMap and Copernicus licences require these credits (spec section 11). Terrain
+    shows through the hillshade or the contours, so every terrain source carries its credit."""
+    sources = get_style(client)["sources"]
+    assert "© OpenStreetMap contributors" in sources["basemap"]["attribution"]
+    for name in ("terrain", "contours", "contour_labels"):
+        assert COPERNICUS_CREDIT in sources[name].get("attribution", ""), name
+
+
 def test_every_font_file_loads(client):
     faces = get_style(client)["font-faces"]
     for files in faces.values():
