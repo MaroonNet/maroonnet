@@ -43,6 +43,13 @@ TRAIL_USES = {
                                                ["in", ["get", "motor_vehicle"], ALLOWED]]),
 }
 
+# Credits the map must show (spec section 11), set on each source. Plain text, not links: the map
+# works offline, and the style names no internet addresses. The terrain credit is the wording the
+# Copernicus licence requires; the US terrain (USGS) is public domain and needs none.
+OSM_CREDIT = "© OpenStreetMap contributors"
+TERRAIN_CREDIT = ("Terrain: DLR e.V. 2010-2014, Airbus Defence and Space GmbH 2014-2018, "
+                  "provided under COPERNICUS by the European Union and ESA. All rights reserved.")
+
 SRC = "basemap"
 BASEMAP_MAX_ZOOM = 14  # the basemap is built to zoom 14 (D16); MapLibre enlarges its tiles beyond that
 
@@ -292,17 +299,21 @@ def build_style(origin: str, terrain_max_zoom: int) -> dict:
         "sprite": f"{origin}/maps/sprites/ofm",
         "sources": {
             SRC: {"type": "vector", "tiles": [f"{origin}/tiles/basemap/{{z}}/{{x}}/{{y}}"],
-                  "minzoom": 0, "maxzoom": BASEMAP_MAX_ZOOM},
+                  "minzoom": 0, "maxzoom": BASEMAP_MAX_ZOOM, "attribution": OSM_CREDIT},
             # Heights stored as colours (Terrarium encoding) in 512-pixel tiles, as Mapterhorn makes them.
             # dem-shared:// is answered by the contour plug-in, not the network. It downloads each tile once
             # and shares it between the hillshade and the contour lines.
             "terrain": {"type": "raster-dem", "tiles": ["dem-shared://{z}/{x}/{y}"],
-                        "encoding": "terrarium", "tileSize": 512, "maxzoom": terrain_max_zoom},
-            "contours": {"type": "vector", "tiles": [CONTOUR_URL], "maxzoom": CONTOUR_MAX_ZOOM},
+                        "encoding": "terrarium", "tileSize": 512, "maxzoom": terrain_max_zoom,
+                        "attribution": TERRAIN_CREDIT},
+            # The contour sources carry the terrain credit too: MapLibre shows a source's credit only
+            # while a visible layer uses it, and contours can be shown with the hillshade hidden.
+            "contours": {"type": "vector", "tiles": [CONTOUR_URL], "maxzoom": CONTOUR_MAX_ZOOM,
+                         "attribution": TERRAIN_CREDIT},
             # A copy of the contour lines traced one zoom coarser (overzoom=1), used only to place labels.
             # Text cannot follow the full-detail lines' sharp bends, so most labels would be dropped.
             "contour_labels": {"type": "vector", "tiles": [CONTOUR_URL + "&overzoom=1"],
-                               "maxzoom": CONTOUR_MAX_ZOOM},
+                               "maxzoom": CONTOUR_MAX_ZOOM, "attribution": TERRAIN_CREDIT},
         },
         "layers": LAYERS,
     }
