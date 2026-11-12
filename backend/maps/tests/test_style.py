@@ -3,7 +3,9 @@
 import json
 import re
 
-from maps.routes import is_asset_name
+from pmtiles.tile import Compression, TileType
+
+from maps.routes import TERRAIN_SETTING, is_asset_name
 
 ORIGIN = "http://testserver"  # the address the test client sends its requests to
 
@@ -61,3 +63,14 @@ def test_asset_names_stay_inside_their_folder():
     assert is_asset_name("noto-sans-latin-400-normal.woff2")
     for name in ["..", ".hidden", "..\\..\\routes.py", "a/b", "C:secret", ""]:
         assert not is_asset_name(name), name
+
+
+def test_terrain_max_zoom_comes_from_the_pack(make_pack, client, monkeypatch):
+    # A made-up terrain pack whose last zoom is 14, like the POC's.
+    monkeypatch.setenv(TERRAIN_SETTING, make_pack({(14, 0, 0): b"tile"}, TileType.WEBP, Compression.NONE))
+    assert get_style(client)["sources"]["terrain"]["maxzoom"] == 14
+
+
+def test_terrain_max_zoom_without_a_pack(client, monkeypatch):
+    monkeypatch.delenv(TERRAIN_SETTING, raising=False)
+    assert get_style(client)["sources"]["terrain"]["maxzoom"] == 12

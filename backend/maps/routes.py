@@ -66,10 +66,23 @@ def terrain_tile(z: int = Zoom, x: int = Column, y: int = Row):
     return serve_tile(TERRAIN_SETTING, z, x, y)
 
 
+# Used when no terrain pack is set up: a state pack's last zoom.
+DEFAULT_TERRAIN_MAX_ZOOM = 12
+
+
+def terrain_max_zoom() -> int:
+    """The terrain pack's last zoom, read from its own header."""
+    path = os.environ.get(TERRAIN_SETTING)
+    try:
+        return open_pack(path).max_zoom if path else DEFAULT_TERRAIN_MAX_ZOOM
+    except FileNotFoundError:
+        return DEFAULT_TERRAIN_MAX_ZOOM
+
+
 @router.get("/maps/style.json")
 def style(request: Request):
     # The address this request came to, so the style points back at the same server.
-    return build_style(str(request.base_url).rstrip("/"))
+    return build_style(str(request.base_url).rstrip("/"), terrain_max_zoom())
 
 
 @router.get("/maps/fonts/{name}")

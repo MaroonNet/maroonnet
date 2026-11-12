@@ -21,10 +21,6 @@ BASEMAP_MAX_ZOOM = 14  # the basemap is built to zoom 14 (D16); MapLibre enlarge
 # spacing of the thin lines and of the thicker index lines: at zoom 12, every 100 ft and every 500 ft.
 CONTOUR_URL = ("dem-contour://{z}/{x}/{y}?contourLayer=contours&elevationKey=ele&levelKey=level"
                "&multiplier=3.28084&thresholds=10*500*2500~11*200*1000~12*100*500~14*40*200~15*20*100")
-# The last zoom of the terrain the map draws today: the state pack, zoom 0 to 12. Mission packs
-# (zoom 13 to 16, for an area the user downloads) are joined in later. MapLibre enlarges the
-# last tiles beyond that.
-TERRAIN_MAX_ZOOM = 12
 
 # Noto Sans, from @fontsource/noto-sans 5.3.0 (SIL Open Font License 1.1: assets/fonts/LICENSE).
 # The style's font-faces hand MapLibre the font files, and it draws the letters itself.
@@ -240,7 +236,7 @@ LAYERS = [
 ]
 
 
-def build_style(origin: str) -> dict:
+def build_style(origin: str, terrain_max_zoom: int) -> dict:
     """The style, with every address made absolute from origin, for example http://127.0.0.1:8000.
 
     MapLibre needs absolute addresses: it fetches tiles from background workers that have no
@@ -260,7 +256,7 @@ def build_style(origin: str) -> dict:
             # dem-shared:// is answered by the contour plug-in, not the network. It downloads each tile once
             # and shares it between the hillshade and the contour lines.
             "terrain": {"type": "raster-dem", "tiles": ["dem-shared://{z}/{x}/{y}"],
-                        "encoding": "terrarium", "tileSize": 512, "maxzoom": TERRAIN_MAX_ZOOM},
+                        "encoding": "terrarium", "tileSize": 512, "maxzoom": terrain_max_zoom},
             "contours": {"type": "vector", "tiles": [CONTOUR_URL], "maxzoom": 15},
             # A copy of the contour lines traced one zoom coarser (overzoom=1), used only to place labels.
             # Text cannot follow the full-detail lines' sharp bends, so most labels would be dropped.

@@ -9,11 +9,6 @@ export const MAP_STYLE_URL = '/maps/style.json'
 // only make the map blurrier.
 export const MAX_ZOOM = 17
 
-// The last zoom of the terrain the map draws today: the state pack, zoom 0 to 12. Mission packs
-// (zoom 13 to 16, for an area the user downloads) are joined in later. Must match
-// TERRAIN_MAX_ZOOM in backend/maps/style.py.
-export const TERRAIN_MAX_ZOOM = 12
-
 // Placeholder center (Denver) until the search region is picked.
 export const INITIAL_VIEW: Pick<ViewState, 'longitude' | 'latitude' | 'zoom'> = {
     longitude: -105.0,
