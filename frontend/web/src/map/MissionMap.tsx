@@ -1,10 +1,12 @@
-import { addProtocol, setWorkerUrl, type RasterDEMSourceSpecification, type StyleSpecification } from "maplibre-gl"
+import { addProtocol, setWorkerUrl, type LayerSpecification, type RasterDEMSourceSpecification, type StyleSpecification } from "maplibre-gl"
+import { useState } from 'react'
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import mlcontour from 'maplibre-contour'
 import Map, { NavigationControl, ScaleControl } from 'react-map-gl/maplibre'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { sendError } from '../diagnostics/errorLog'
 import { INITIAL_VIEW, MAP_STYLE_URL, MAX_ZOOM } from "./config"
+import LayerToggles from './LayerToggles'
 
 setWorkerUrl(workerUrl)
 
@@ -39,7 +41,22 @@ if (style) {
 
 let tileErrorSent = false  // a tile failure repeats for every tile, so only the first is sent
 
+// A copy of the style with the hidden groups' layers set to not show. MapLibre compares it
+// with the style it is drawing and changes only those layers.
+function hideGroups(style: StyleSpecification, hidden: string[]): StyleSpecification {
+    return {
+        ...style,
+        layers: style.layers.map((layer) => {
+            const group = (layer.metadata as { group?: string } | undefined)?.group
+            if (!group || !hidden.includes(group)) return layer
+            return { ...layer, layout: { ...layer.layout, visibility: 'none' } } as LayerSpecification
+        }),
+    }
+}
+
 function MissionMap() {
+    const [hidden, setHidden] = useState<string[]>([])  // the layer groups the user has hidden
+
     if (!style) {
         return (
             <p style={{ padding: 16, font: '14px system-ui, sans-serif' }}>
@@ -51,7 +68,7 @@ function MissionMap() {
     return (
         <Map
             initialViewState={INITIAL_VIEW}
-            mapStyle={style}
+            mapStyle={hideGroups(style, hidden)}
             maxZoom={MAX_ZOOM}
             style={{width: '100%', height: '100%'}}
             onError={(e) => {
@@ -64,6 +81,7 @@ function MissionMap() {
         >
             <NavigationControl position="top-right" />
             <ScaleControl />
+            <LayerToggles hidden={hidden} setHidden={setHidden} />
         </Map>
     )
 }
