@@ -1,7 +1,13 @@
 import type { ViewState } from 'react-map-gl/maplibre'
 
-// Online basemap for now; swap for local tiles once the team settles the tile format
-export const MAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty'
+// The map style, served by the backend (backend/maps/style.py). Drawing from local packs only.
+export const MAP_STYLE_URL = '/maps/style.json'
+
+// The deepest zoom a user can reach. Past a pack's last zoom there is no new detail, so MapLibre
+// enlarges the last tiles instead. The basemap (built to 14) stays sharp for about 3 zooms of
+// enlarging, and the most detailed terrain (a mission pack) stops at 16, so going past 17 would
+// only make the map blurrier.
+export const MAX_ZOOM = 17
 
 // Placeholder center (Denver) until the search region is picked.
 export const INITIAL_VIEW: Pick<ViewState, 'longitude' | 'latitude' | 'zoom'> = {
@@ -9,4 +15,3 @@ export const INITIAL_VIEW: Pick<ViewState, 'longitude' | 'latitude' | 'zoom'> = 
     latitude: 39.74,
     zoom: 11
 }
-

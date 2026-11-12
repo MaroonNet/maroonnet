@@ -9,11 +9,21 @@ PAPER = "#f4f1e8"
 WATER, WATER_LINE, WATER_TEXT = "#a9cfe6", "#3f8fc4", "#2a6a99"
 TRAIL, TRAIL_PAVED = "#b3261e", "#8c8c8c"
 TRACK, FOUR_WD, DIRT = "#8a5a2b", "#2f2418", "#b08850"
+CONTOUR, CONTOUR_INDEX = "#a0703f", "#7d4f22"
 PEAK_TEXT = "#4a3426"
 HALO = "rgba(255,255,255,0.85)"  # the pale rim around label text that keeps it readable over lines
 
 SRC = "basemap"
 BASEMAP_MAX_ZOOM = 14  # the basemap is built to zoom 14 (D16); MapLibre enlarges its tiles beyond that
+
+# Contour lines are traced in the browser: dem-contour:// asks the contour plug-in to trace them
+# from the shared height tiles. Heights are in feet (multiplier). thresholds lists, per zoom, the
+# spacing of the thin lines and of the thicker index lines: at zoom 12, every 100 ft and every 500 ft.
+CONTOUR_URL = ("dem-contour://{z}/{x}/{y}?contourLayer=contours&elevationKey=ele&levelKey=level"
+               "&multiplier=3.28084&thresholds=10*500*2500~11*200*1000~12*100*500~14*40*200~15*20*100")
+# Contour lines are traced for zooms up to 15. At zoom 15 there is a line for every 20 ft of
+# height, the most detail we draw. At zooms 16 and 17 the map shows zoom 15's lines, drawn larger.
+CONTOUR_MAX_ZOOM = 15
 
 # Noto Sans, from @fontsource/noto-sans 5.3.0 (SIL Open Font License 1.1: assets/fonts/LICENSE).
 # The style's font-faces hand MapLibre the font files, and it draws the letters itself.
@@ -28,11 +38,14 @@ def font_faces(origin: str) -> dict:
             "Noto Sans Italic": files("400-italic")}
 
 
-def layer(id, group, type, source_layer=None, **spec):
-    """One style layer. source_layer names the layer inside the basemap tiles that it draws."""
+def layer(id, group, type, source_layer=None, source=None, **spec):
+    """One style layer. source names the data it draws from: the basemap unless given.
+    source_layer names the part of that source's tiles it reads."""
     out = {"id": id, "type": type, "metadata": {"group": group}}
+    if source or source_layer:
+        out["source"] = source or SRC
     if source_layer:
-        out |= {"source": SRC, "source-layer": source_layer}
+        out["source-layer"] = source_layer
     return out | spec
 
 
@@ -86,6 +99,11 @@ LAYERS = [
                  "line-dasharray": ["match", ["get", "designation"],
                                     "wilderness", ["literal", [4, 2]], ["literal", [1, 0]]]}),
 
+    # ---- terrain: shading drawn from heights, lit from the north-west
+    layer("hillshade", "hillshade", "hillshade", source="terrain",
+          paint={"hillshade-exaggeration": 0.45, "hillshade-shadow-color": "rgba(60,50,40,0.55)",
+                 "hillshade-highlight-color": "rgba(255,255,255,0.25)"}),
+
     # ---- water
     layer("water", "water", "fill", "water",
           paint={"fill-color": ["match", ["get", "kind"], "glacier", "#eef6fb", WATER],
@@ -97,6 +115,14 @@ LAYERS = [
                                                    12: {"river": 2, "stream": 0.7}, 16: {"river": 4, "stream": 1.6}},
                                           {7: 0.3, 10: 0.4, 12: 0.7, 16: 1.2}),
                  "line-dasharray": ["case", ["get", "intermittent"], ["literal", [3, 2]], ["literal", [1, 0]]]}),
+
+    # ---- contours: a thin line at every interval, a thicker index line every fifth
+    layer("contours-minor", "contours", "line", "contours", source="contours",
+          filter=["==", ["get", "level"], 0],
+          paint={"line-color": CONTOUR, "line-opacity": 0.55, "line-width": 0.7}),
+    layer("contours-index", "contours", "line", "contours", source="contours",
+          filter=[">", ["get", "level"], 0],
+          paint={"line-color": CONTOUR_INDEX, "line-opacity": 0.9, "line-width": 1.4}),
 
     # ---- paved roads (casing under fill)
     layer("roads-casing", "roads", "line", "roads", minzoom=10,
@@ -143,6 +169,11 @@ LAYERS = [
                   "text-max-width": 9, "text-letter-spacing": 0.05},
           paint={"text-color": ["match", ["get", "designation"], "blm", "#8a6a12", "#3d6e2f"],
                  "text-halo-color": HALO, "text-halo-width": 1.2}),
+    layer("contour-labels", "contours", "symbol", "contours", source="contour_labels",
+          filter=[">", ["get", "level"], 0],
+          layout={"symbol-placement": "line", "text-field": ["to-string", ["get", "ele"]], "text-font": FONT["regular"],
+                  "text-size": 10, "text-max-angle": 120, "symbol-spacing": 400},
+          paint={"text-color": CONTOUR_INDEX, "text-halo-color": HALO, "text-halo-width": 1.2}),
     layer("road-labels", "roads", "symbol", "roads", minzoom=11,
           filter=["any", ["has", "name"], ["has", "ref"]],
           layout={"symbol-placement": "line", "text-field": ["coalesce", ["get", "ref"], ["get", "name"]],
@@ -211,7 +242,7 @@ LAYERS = [
 ]
 
 
-def build_style(origin: str) -> dict:
+def build_style(origin: str, terrain_max_zoom: int) -> dict:
     """The style, with every address made absolute from origin, for example http://127.0.0.1:8000.
 
     MapLibre needs absolute addresses: it fetches tiles from background workers that have no
@@ -227,6 +258,16 @@ def build_style(origin: str) -> dict:
         "sources": {
             SRC: {"type": "vector", "tiles": [f"{origin}/tiles/basemap/{{z}}/{{x}}/{{y}}"],
                   "minzoom": 0, "maxzoom": BASEMAP_MAX_ZOOM},
+            # Heights stored as colours (Terrarium encoding) in 512-pixel tiles, as Mapterhorn makes them.
+            # dem-shared:// is answered by the contour plug-in, not the network. It downloads each tile once
+            # and shares it between the hillshade and the contour lines.
+            "terrain": {"type": "raster-dem", "tiles": ["dem-shared://{z}/{x}/{y}"],
+                        "encoding": "terrarium", "tileSize": 512, "maxzoom": terrain_max_zoom},
+            "contours": {"type": "vector", "tiles": [CONTOUR_URL], "maxzoom": CONTOUR_MAX_ZOOM},
+            # A copy of the contour lines traced one zoom coarser (overzoom=1), used only to place labels.
+            # Text cannot follow the full-detail lines' sharp bends, so most labels would be dropped.
+            "contour_labels": {"type": "vector", "tiles": [CONTOUR_URL + "&overzoom=1"],
+                               "maxzoom": CONTOUR_MAX_ZOOM},
         },
         "layers": LAYERS,
     }
