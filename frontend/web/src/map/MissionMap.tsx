@@ -98,6 +98,7 @@ function MissionMap() {
             maxZoom={MAX_ZOOM}
             style={{width: '100%', height: '100%'}}
             onError={(e) => {
+                console.error(e.error)  // every error, as react-map-gl prints when there is no onError
                 if ('tile' in e) {
                     if (tileErrorSent) return
                     tileErrorSent = true
