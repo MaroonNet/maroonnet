@@ -14,6 +14,8 @@ HALO = "rgba(255,255,255,0.85)"  # the pale rim around label text that keeps it 
 
 SRC = "basemap"
 BASEMAP_MAX_ZOOM = 14  # the basemap is built to zoom 14 (D16); MapLibre enlarges its tiles beyond that
+# The terrain pack's last zoom: 12 for a state pack. MapLibre enlarges its tiles beyond that.
+TERRAIN_MAX_ZOOM = 12
 
 # Noto Sans, from @fontsource/noto-sans 5.3.0 (SIL Open Font License 1.1: assets/fonts/LICENSE).
 # The style's font-faces hand MapLibre the font files, and it draws the letters itself.
@@ -85,6 +87,11 @@ LAYERS = [
                  "line-opacity": ["match", ["get", "designation"], "blm", 0.35, 0.9],
                  "line-dasharray": ["match", ["get", "designation"],
                                     "wilderness", ["literal", [4, 2]], ["literal", [1, 0]]]}),
+
+    # ---- terrain: shading drawn from heights, lit from the north-west
+    {"id": "hillshade", "type": "hillshade", "source": "terrain", "metadata": {"group": "hillshade"},
+     "paint": {"hillshade-exaggeration": 0.45, "hillshade-shadow-color": "rgba(60,50,40,0.55)",
+               "hillshade-highlight-color": "rgba(255,255,255,0.25)"}},
 
     # ---- water
     layer("water", "water", "fill", "water",
@@ -227,6 +234,9 @@ def build_style(origin: str) -> dict:
         "sources": {
             SRC: {"type": "vector", "tiles": [f"{origin}/tiles/basemap/{{z}}/{{x}}/{{y}}"],
                   "minzoom": 0, "maxzoom": BASEMAP_MAX_ZOOM},
+            # Heights stored as colours (Terrarium encoding) in 512-pixel tiles, as Mapterhorn makes them.
+            "terrain": {"type": "raster-dem", "tiles": [f"{origin}/tiles/terrain/{{z}}/{{x}}/{{y}}"],
+                        "encoding": "terrarium", "tileSize": 512, "maxzoom": TERRAIN_MAX_ZOOM},
         },
         "layers": LAYERS,
     }
