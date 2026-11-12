@@ -45,7 +45,7 @@ COPERNICUS_CREDIT = ("DLR e.V. 2010-2014, Airbus Defence and Space GmbH 2014-201
 
 
 def test_style_carries_the_required_credits(client):
-    """The OpenStreetMap and Copernicus licences require these credits (spec section 11). Terrain
+    """The OpenStreetMap and Copernicus licences require these credits. Terrain
     shows through the hillshade or the contours, so every terrain source carries its credit."""
     sources = get_style(client)["sources"]
     assert "© OpenStreetMap contributors" in sources["basemap"]["attribution"]
