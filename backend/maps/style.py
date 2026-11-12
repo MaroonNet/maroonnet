@@ -167,6 +167,11 @@ LAYERS = [
                   "text-max-width": 9, "text-letter-spacing": 0.05},
           paint={"text-color": ["match", ["get", "designation"], "blm", "#8a6a12", "#3d6e2f"],
                  "text-halo-color": HALO, "text-halo-width": 1.2}),
+    {"id": "contour-labels", "type": "symbol", "source": "contour_labels", "source-layer": "contours",
+     "metadata": {"group": "contours"}, "filter": [">", ["get", "level"], 0],
+     "layout": {"symbol-placement": "line", "text-field": ["to-string", ["get", "ele"]], "text-font": FONT["regular"],
+                "text-size": 10, "text-max-angle": 120, "symbol-spacing": 400},
+     "paint": {"text-color": CONTOUR_INDEX, "text-halo-color": HALO, "text-halo-width": 1.2}},
     layer("road-labels", "roads", "symbol", "roads", minzoom=11,
           filter=["any", ["has", "name"], ["has", "ref"]],
           layout={"symbol-placement": "line", "text-field": ["coalesce", ["get", "ref"], ["get", "name"]],
@@ -257,6 +262,9 @@ def build_style(origin: str) -> dict:
             "terrain": {"type": "raster-dem", "tiles": ["dem-shared://{z}/{x}/{y}"],
                         "encoding": "terrarium", "tileSize": 512, "maxzoom": TERRAIN_MAX_ZOOM},
             "contours": {"type": "vector", "tiles": [CONTOUR_URL], "maxzoom": 15},
+            # A copy of the contour lines traced one zoom coarser (overzoom=1), used only to place labels.
+            # Text cannot follow the full-detail lines' sharp bends, so most labels would be dropped.
+            "contour_labels": {"type": "vector", "tiles": [CONTOUR_URL + "&overzoom=1"], "maxzoom": 15},
         },
         "layers": LAYERS,
     }
