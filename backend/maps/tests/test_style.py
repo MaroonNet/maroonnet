@@ -3,6 +3,8 @@
 import json
 import re
 
+from maps.routes import is_asset_name
+
 ORIGIN = "http://testserver"  # the address the test client sends its requests to
 
 
@@ -48,5 +50,14 @@ def test_icon_sheet_loads(client):
 
 def test_missing_asset_is_404(client):
     assert client.get("/maps/fonts/no-such-font.woff2").status_code == 404
-    # A name that tries to climb out of the fonts folder finds nothing.
-    assert client.get("/maps/fonts/..%2F..%2Froutes.py").status_code == 404
+    # %5C is a backslash: on Windows this name would climb out of the fonts folder.
+    assert client.get("/maps/fonts/..%5C..%5Croutes.py").status_code == 404
+
+
+def test_asset_names_stay_inside_their_folder():
+    # Checked directly rather than through an address, so this fails on any computer if the rule
+    # breaks. Through an address, a backslash name is refused on a Mac anyway, for another reason.
+    assert is_asset_name("ofm@2x.png")
+    assert is_asset_name("noto-sans-latin-400-normal.woff2")
+    for name in ["..", ".hidden", "..\\..\\routes.py", "a/b", "C:secret", ""]:
+        assert not is_asset_name(name), name

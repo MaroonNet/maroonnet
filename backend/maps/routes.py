@@ -2,6 +2,7 @@
 
 import os
 import pathlib
+import re
 
 from fastapi import APIRouter, HTTPException, Path, Request, Response
 from fastapi.responses import FileResponse
@@ -17,6 +18,15 @@ TERRAIN_SETTING = "MAPS_TERRAIN_PACK"
 
 # Fonts and the icon sheet ship with the code, so the map needs nothing from the internet.
 ASSETS = pathlib.Path(__file__).parent / "assets"
+
+# Asset file names may use only letters, digits and . - _ @ (as in ofm@2x.png), and may not
+# start with a dot. Any other name, such as "..\..\routes.py", could reach a file outside the
+# folder: on Windows a backslash separates folders, the same way "/" does.
+ASSET_NAME = re.compile(r"[A-Za-z0-9_@-][A-Za-z0-9._@-]*")
+
+
+def is_asset_name(name: str) -> bool:
+    return ASSET_NAME.fullmatch(name) is not None
 
 Zoom = Path(ge=0, le=30)
 Column = Path(ge=0)
@@ -40,9 +50,8 @@ def serve_tile(setting: str, z: int, x: int, y: int) -> Response:
 
 
 def serve_asset(folder: str, name: str) -> FileResponse:
-    # A path value cannot contain "/", so the file is always directly inside the folder.
     file = ASSETS / folder / name
-    if not file.is_file():
+    if not is_asset_name(name) or not file.is_file():
         raise HTTPException(404, "no such file")
     return FileResponse(file)
 
