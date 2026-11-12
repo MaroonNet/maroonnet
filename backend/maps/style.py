@@ -9,11 +9,18 @@ PAPER = "#f4f1e8"
 WATER, WATER_LINE, WATER_TEXT = "#a9cfe6", "#3f8fc4", "#2a6a99"
 TRAIL, TRAIL_PAVED = "#b3261e", "#8c8c8c"
 TRACK, FOUR_WD, DIRT = "#8a5a2b", "#2f2418", "#b08850"
+CONTOUR, CONTOUR_INDEX = "#a0703f", "#7d4f22"
 PEAK_TEXT = "#4a3426"
 HALO = "rgba(255,255,255,0.85)"  # the pale rim around label text that keeps it readable over lines
 
 SRC = "basemap"
 BASEMAP_MAX_ZOOM = 14  # the basemap is built to zoom 14 (D16); MapLibre enlarges its tiles beyond that
+
+# Contour lines are traced in the browser: dem-contour:// asks the contour plug-in to trace them
+# from the shared height tiles. Heights are in feet (multiplier). thresholds lists, per zoom, the
+# spacing of the thin lines and of the thicker index lines: at zoom 12, every 100 ft and every 500 ft.
+CONTOUR_URL = ("dem-contour://{z}/{x}/{y}?contourLayer=contours&elevationKey=ele&levelKey=level"
+               "&multiplier=3.28084&thresholds=10*500*2500~11*200*1000~12*100*500~14*40*200~15*20*100")
 # The last zoom of the terrain the map draws today: the state pack, zoom 0 to 12. Mission packs
 # (zoom 13 to 16, for an area the user downloads) are joined in later. MapLibre enlarges the
 # last tiles beyond that.
@@ -106,6 +113,14 @@ LAYERS = [
                                                    12: {"river": 2, "stream": 0.7}, 16: {"river": 4, "stream": 1.6}},
                                           {7: 0.3, 10: 0.4, 12: 0.7, 16: 1.2}),
                  "line-dasharray": ["case", ["get", "intermittent"], ["literal", [3, 2]], ["literal", [1, 0]]]}),
+
+    # ---- contours: a thin line at every interval, a thicker index line every fifth
+    {"id": "contours-minor", "type": "line", "source": "contours", "source-layer": "contours",
+     "metadata": {"group": "contours"}, "filter": ["==", ["get", "level"], 0],
+     "paint": {"line-color": CONTOUR, "line-opacity": 0.55, "line-width": 0.7}},
+    {"id": "contours-index", "type": "line", "source": "contours", "source-layer": "contours",
+     "metadata": {"group": "contours"}, "filter": [">", ["get", "level"], 0],
+     "paint": {"line-color": CONTOUR_INDEX, "line-opacity": 0.9, "line-width": 1.4}},
 
     # ---- paved roads (casing under fill)
     layer("roads-casing", "roads", "line", "roads", minzoom=10,
@@ -241,6 +256,7 @@ def build_style(origin: str) -> dict:
             # and shares it between the hillshade and the contour lines.
             "terrain": {"type": "raster-dem", "tiles": ["dem-shared://{z}/{x}/{y}"],
                         "encoding": "terrarium", "tileSize": 512, "maxzoom": TERRAIN_MAX_ZOOM},
+            "contours": {"type": "vector", "tiles": [CONTOUR_URL], "maxzoom": 15},
         },
         "layers": LAYERS,
     }
