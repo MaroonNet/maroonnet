@@ -1,6 +1,8 @@
 """pack.json: the small file in each pack's folder that says what the pack is (spec 8.3)."""
 
+import os
 from datetime import date
+from pathlib import Path
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
@@ -24,3 +26,18 @@ class PackInfo(BaseModel):
     downloaded: date
     bytes: int = Field(ge=0)  # the map file's size
     status: Literal["complete", "partial"]
+
+
+FILE_NAME = "pack.json"
+
+
+def write_pack_info(folder: Path, info: PackInfo) -> None:
+    """Writes folder/pack.json. The text goes to a temporary file first, which is then renamed
+    over pack.json in one step, so the program stopping part way never leaves half a file."""
+    temporary = folder / f"{FILE_NAME}.tmp"
+    temporary.write_text(info.model_dump_json(indent=2), encoding="utf-8")
+    os.replace(temporary, folder / FILE_NAME)
+
+
+def read_pack_info(folder: Path) -> PackInfo:
+    return PackInfo.model_validate_json((folder / FILE_NAME).read_text(encoding="utf-8"))

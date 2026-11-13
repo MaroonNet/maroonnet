@@ -1,11 +1,11 @@
-"""pack.json's shape is checked: a label with a wrong value is refused."""
+"""pack.json's shape is checked, and it is written and read back safely."""
 
 from datetime import date
 
 import pytest
 from pydantic import ValidationError
 
-from maps.pack_info import PackInfo
+from maps.pack_info import PackInfo, read_pack_info, write_pack_info
 
 COLORADO_TERRAIN = {
     "format": 1,
@@ -43,3 +43,10 @@ def test_the_colorado_terrain_label_passes():
 def test_a_wrong_value_is_refused_by_name(field, wrong):
     with pytest.raises(ValidationError, match=field):
         PackInfo.model_validate({**COLORADO_TERRAIN, field: wrong})
+
+
+def test_a_written_pack_json_reads_back_the_same(tmp_path):
+    info = PackInfo.model_validate(COLORADO_TERRAIN)
+    write_pack_info(tmp_path, info)
+    assert read_pack_info(tmp_path) == info
+    assert [file.name for file in tmp_path.iterdir()] == ["pack.json"]  # no temporary file left
