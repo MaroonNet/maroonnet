@@ -8,22 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from maps.pack_info import PackInfo, read_pack_info, write_pack_info
-
-COLORADO_TERRAIN = {
-    "format": 1,
-    "kind": "state",
-    "contents": "terrain",
-    "name": "Colorado",
-    "file": "terrain-z0-12.pmtiles",
-    "area": [[-109.06, 36.99, -102.04, 41.00]],
-    "min_zoom": 0,
-    "max_zoom": 12,
-    "source_urls": ["https://download.mapterhorn.com/planet.pmtiles"],
-    "data_date": None,
-    "downloaded": "2026-10-24",
-    "bytes": 683000000,
-    "status": "complete",
-}
+from maps.tests.samples import COLORADO_TERRAIN
 
 
 def test_the_colorado_terrain_label_passes():

@@ -5,6 +5,8 @@ from fastapi.testclient import TestClient
 from pmtiles.tile import Compression, TileType, zxy_to_tileid
 from pmtiles.writer import write
 
+from maps.pack_info import PackInfo, write_pack_info
+from maps.tests.samples import COLORADO_TERRAIN
 from server.main import app
 
 
@@ -25,6 +27,17 @@ def make_pack(tmp_path):
         return str(path)
 
     return _make_pack
+
+
+@pytest.fixture
+def write_pack_json():
+    """Returns a function that writes a valid pack.json into a folder, with any fields changed."""
+
+    def _write_pack_json(folder, **changes):
+        folder.mkdir(parents=True, exist_ok=True)
+        write_pack_info(folder, PackInfo.model_validate({**COLORADO_TERRAIN, **changes}))
+
+    return _write_pack_json
 
 
 @pytest.fixture
