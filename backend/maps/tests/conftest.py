@@ -5,9 +5,17 @@ from fastapi.testclient import TestClient
 from pmtiles.tile import Compression, TileType, zxy_to_tileid
 from pmtiles.writer import write
 
+from maps.installed import installed
 from maps.pack_info import PackInfo, write_pack_info
 from maps.tests.samples import COLORADO_TERRAIN
 from server.main import app
+
+
+@pytest.fixture(autouse=True)
+def forget_installed_packs():
+    """Empties the backend's list of installed packs after each test, so no test sees another's."""
+    yield
+    installed.clear()
 
 
 @pytest.fixture

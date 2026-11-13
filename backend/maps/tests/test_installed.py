@@ -1,8 +1,9 @@
 """Finding the packs installed in the maps folder."""
 
 import pytest
+from pmtiles.tile import Compression, TileType
 
-from maps.installed import pack_folders, read_pack_infos
+from maps.installed import installed, pack_folders, read_pack_infos, scan
 
 
 def test_only_folders_in_the_agreed_layout_are_found(tmp_path):
@@ -44,3 +45,30 @@ def test_a_pack_json_that_disagrees_with_its_folder_is_skipped(tmp_path, capsys,
     write_pack_json(tmp_path / folder, **changes)
     assert read_pack_infos(tmp_path) == {}
     assert "but its folder holds" in capsys.readouterr().out
+
+
+def test_a_complete_pack_is_opened_and_a_partial_one_is_listed_unopened(tmp_path, write_pack_json,
+                                                                        make_pack):
+    write_pack_json(tmp_path / "state/CO/terrain")
+    make_pack({(0, 0, 0): b"heights"}, TileType.WEBP, Compression.NONE,
+              name="state/CO/terrain/terrain-z0-12.pmtiles")
+    write_pack_json(tmp_path / "mission/brainard-lake", kind="mission", status="partial",
+                    file="terrain-z13-16.pmtiles")  # its map file is not there yet
+
+    scan(tmp_path)
+
+    assert installed["state/CO/terrain"].pack.tile(0, 0, 0) == b"heights"
+    assert installed["mission/brainard-lake"].pack is None
+
+
+@pytest.mark.parametrize("map_file", [None, b"not a pack"])  # missing; not a pack
+def test_a_complete_pack_whose_map_file_cannot_be_opened_is_skipped(tmp_path, capsys, write_pack_json,
+                                                                    map_file):
+    write_pack_json(tmp_path / "state/CO/terrain")
+    if map_file is not None:
+        (tmp_path / "state/CO/terrain/terrain-z0-12.pmtiles").write_bytes(map_file)
+
+    scan(tmp_path)
+
+    assert installed == {}
+    assert "its map file terrain-z0-12.pmtiles could not be opened" in capsys.readouterr().out

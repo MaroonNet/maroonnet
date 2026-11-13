@@ -1,8 +1,10 @@
 """The packs installed in the maps folder, found once when the server starts (spec 8.3)."""
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from .pack_info import PackInfo, read_pack_info
+from .packs import Pack
 
 # Where packs may sit inside the maps folder. A folder anywhere else is ignored.
 PACK_FOLDER_PATTERNS = ("state/*/basemap", "state/*/terrain", "mission/*")
@@ -44,3 +46,32 @@ def read_pack_infos(maps: Path) -> dict[str, PackInfo]:
             continue
         infos[pack_id] = info
     return infos
+
+
+@dataclass
+class InstalledPack:
+    info: PackInfo
+    pack: Pack | None  # the open map file; None while the pack is partial
+
+
+# The installed packs, by id. Filled once when the server starts: packs are not copied in by hand
+# for now (spec section 2). Deleting (plan 2.6) and downloading (5.6) will change it.
+installed: dict[str, InstalledPack] = {}
+
+
+def scan(maps: Path) -> None:
+    """Finds the installed packs and keeps them in `installed`. Complete packs are opened, ready
+    to serve; partial ones are listed but not opened. A complete pack whose map file is missing or
+    is not a pack is skipped with a message."""
+    installed.clear()
+    for pack_id, info in read_pack_infos(maps).items():
+        pack = None
+        if info.status == "complete":
+            path = maps / pack_id / info.file
+            try:
+                pack = Pack(str(path))
+            except Exception as error:  # missing, unreadable, or not a pack at all
+                print(f"Skipped {path.parent}: its map file {info.file} could not be opened "
+                      f"({error!r})", flush=True)
+                continue
+        installed[pack_id] = InstalledPack(info, pack)
