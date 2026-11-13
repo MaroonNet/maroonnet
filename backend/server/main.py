@@ -4,6 +4,7 @@ from typing import Annotated
 from fastapi import FastAPI, Header
 from pydantic import BaseModel
 
+from maps.folders import create_maps_folder
 from maps.routes import router as maps_router
 from mapdb.routes import router as spm_router
 from mission.open_mission import mission_session, reopen_last_mission
@@ -15,6 +16,7 @@ from settings.routes import router as settings_router
 # What runs once when the backend starts, before it answers any request.
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    print(f"Maps folder: {create_maps_folder()}", flush=True)
     reopen_last_mission()
     yield
 

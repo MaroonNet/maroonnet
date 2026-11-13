@@ -2,10 +2,12 @@
 
 from pathlib import Path
 
+from fastapi.testclient import TestClient
 from platformdirs.macos import MacOS
 from platformdirs.windows import Windows
 
 from maps import folders
+from server.main import app
 
 
 def test_mac_app_data_folder(monkeypatch):
@@ -28,3 +30,10 @@ def test_windows_app_data_folder_names_maroonnet_once(monkeypatch):
 def test_variable_replaces_app_data_folder(data_dir):
     assert folders.app_data_folder() == data_dir
     assert folders.maps_folder() == data_dir / "maps"
+
+
+def test_starting_the_app_creates_the_maps_folder(data_dir, capsys):
+    assert not (data_dir / "maps").exists()
+    with TestClient(app):  # a with block runs the start-up code, as the real server does
+        assert (data_dir / "maps").is_dir()
+    assert f"Maps folder: {data_dir / 'maps'}" in capsys.readouterr().out

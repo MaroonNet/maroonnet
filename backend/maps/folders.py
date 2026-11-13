@@ -23,3 +23,10 @@ def app_data_folder() -> Path:
 def maps_folder() -> Path:
     """Where the packs live. It is fixed: the user cannot change it (D17)."""
     return app_data_folder() / "maps"
+
+
+def create_maps_folder() -> Path:
+    """Creates the maps folder if it is missing, as on first start, and returns it."""
+    folder = maps_folder()
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
