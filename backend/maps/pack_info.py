@@ -5,7 +5,7 @@ from datetime import date
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 # One box: [west, south, east, north] in degrees, as the manifest writes state boxes.
 Box = tuple[float, float, float, float]
@@ -39,5 +39,15 @@ def write_pack_info(folder: Path, info: PackInfo) -> None:
     os.replace(temporary, folder / FILE_NAME)
 
 
-def read_pack_info(folder: Path) -> PackInfo:
-    return PackInfo.model_validate_json((folder / FILE_NAME).read_text(encoding="utf-8"))
+def read_pack_info(folder: Path) -> PackInfo | None:
+    """Reads folder/pack.json. A missing or damaged one is skipped: this prints why and returns
+    None, so one bad pack cannot stop the server."""
+    try:
+        return PackInfo.model_validate_json((folder / FILE_NAME).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        print(f"Skipped {folder}: it has no {FILE_NAME}", flush=True)
+    except (ValidationError, UnicodeDecodeError) as error:  # cut off, not text, or a wrong value
+        print(f"Skipped {folder}: its {FILE_NAME} is damaged.\n{error}", flush=True)
+    except OSError as error:  # for example, no permission to read it
+        print(f"Skipped {folder}: its {FILE_NAME} could not be read ({error})", flush=True)
+    return None
