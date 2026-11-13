@@ -1,9 +1,11 @@
 """Finding the packs installed in the maps folder."""
 
 import pytest
+from fastapi.testclient import TestClient
 from pmtiles.tile import Compression, TileType
 
 from maps.installed import installed, pack_folders, read_pack_infos, scan
+from server.main import app
 
 
 def test_only_folders_in_the_agreed_layout_are_found(tmp_path):
@@ -72,3 +74,13 @@ def test_a_complete_pack_whose_map_file_cannot_be_opened_is_skipped(tmp_path, ca
 
     assert installed == {}
     assert "its map file terrain-z0-12.pmtiles could not be opened" in capsys.readouterr().out
+
+
+def test_starting_the_app_finds_the_installed_packs(data_dir, capsys, write_pack_json):
+    write_pack_json(data_dir / "maps/mission/brainard-lake", kind="mission", status="partial",
+                    file="terrain-z13-16.pmtiles")
+
+    with TestClient(app):  # a with block runs the start-up code, as the real server does
+        assert list(installed) == ["mission/brainard-lake"]
+
+    assert "Installed packs: mission/brainard-lake (partial)" in capsys.readouterr().out
