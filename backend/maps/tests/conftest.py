@@ -5,7 +5,16 @@ from fastapi.testclient import TestClient
 from pmtiles.tile import Compression, TileType, zxy_to_tileid
 from pmtiles.writer import write
 
+from maps.folders import DATA_DIR_VARIABLE
 from server.main import app
+
+
+@pytest.fixture(autouse=True)
+def data_dir(tmp_path, monkeypatch):
+    """Every test gets its own app data folder, so no test touches the real one."""
+    folder = tmp_path / "app-data"
+    monkeypatch.setenv(DATA_DIR_VARIABLE, str(folder))
+    return folder
 
 
 @pytest.fixture
