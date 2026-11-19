@@ -1,10 +1,14 @@
 """The map backend's web routes."""
 
 import os
+import pathlib
+import re
 
-from fastapi import APIRouter, HTTPException, Path, Response
+from fastapi import APIRouter, HTTPException, Path, Request, Response
+from fastapi.responses import FileResponse
 
-from .packs import open_pack
+from .packs import Pack, open_pack
+from .style import build_style
 
 router = APIRouter()
 
@@ -12,25 +16,49 @@ router = APIRouter()
 BASEMAP_SETTING = "MAPS_BASEMAP_PACK"
 TERRAIN_SETTING = "MAPS_TERRAIN_PACK"
 
+# Fonts and the icon sheet ship with the code, so the map needs nothing from the internet.
+ASSETS = pathlib.Path(__file__).parent / "assets"
+
+# Asset file names may use only letters, digits and . - _ @ (as in ofm@2x.png), and may not
+# start with a dot. Any other name, such as "..\..\routes.py", could reach a file outside the
+# folder: on Windows a backslash separates folders, the same way "/" does.
+ASSET_NAME = re.compile(r"[A-Za-z0-9_@-][A-Za-z0-9._@-]*")
+
+
+def is_asset_name(name: str) -> bool:
+    return ASSET_NAME.fullmatch(name) is not None
+
 Zoom = Path(ge=0, le=30)
 Column = Path(ge=0)
 Row = Path(ge=0)
 
 
-def serve_tile(setting: str, z: int, x: int, y: int) -> Response:
+def pack_for(setting: str) -> Pack:
+    """The pack a setting names. Answers 503, saying why, if the setting is unset or unusable."""
     path = os.environ.get(setting)
     if not path:
         raise HTTPException(503, f"{setting} is not set")
     try:
-        pack = open_pack(path)
-    except FileNotFoundError:
-        raise HTTPException(503, f"{setting} names a file that does not exist: {path}")
+        return open_pack(path)
+    except Exception as error:  # missing, a folder, unreadable, or not a pack at all
+        raise HTTPException(503, f"{setting} does not name a usable pack: {path} ({error!r})")
+
+
+def serve_tile(setting: str, z: int, x: int, y: int) -> Response:
+    pack = pack_for(setting)
     data = pack.tile(z, x, y)
     if data is None:
         raise HTTPException(404, "the pack has no such tile")
     # Tiles are stored compressed. Content-Encoding tells the browser to unpack them itself.
     headers = {"Content-Encoding": pack.encoding} if pack.encoding else {}
     return Response(data, media_type=pack.media_type, headers=headers)
+
+
+def serve_asset(folder: str, name: str) -> FileResponse:
+    file = ASSETS / folder / name
+    if not is_asset_name(name) or not file.is_file():
+        raise HTTPException(404, "no such file")
+    return FileResponse(file)
 
 
 @router.get("/tiles/basemap/{z}/{x}/{y}")
@@ -41,3 +69,31 @@ def basemap_tile(z: int = Zoom, x: int = Column, y: int = Row):
 @router.get("/tiles/terrain/{z}/{x}/{y}")
 def terrain_tile(z: int = Zoom, x: int = Column, y: int = Row):
     return serve_tile(TERRAIN_SETTING, z, x, y)
+
+
+# Used when no terrain pack is set up: a state pack's last zoom.
+DEFAULT_TERRAIN_MAX_ZOOM = 12
+
+
+def terrain_max_zoom() -> int:
+    """The terrain pack's last zoom, read from its own header. A bad pack must not break the style."""
+    try:
+        return pack_for(TERRAIN_SETTING).max_zoom
+    except HTTPException:
+        return DEFAULT_TERRAIN_MAX_ZOOM
+
+
+@router.get("/maps/style.json")
+def style(request: Request):
+    # The address this request came to, so the style points back at the same server.
+    return build_style(str(request.base_url).rstrip("/"), terrain_max_zoom())
+
+
+@router.get("/maps/fonts/{name}")
+def font(name: str):
+    return serve_asset("fonts", name)
+
+
+@router.get("/maps/sprites/{name}")
+def sprite(name: str):
+    return serve_asset("sprites", name)

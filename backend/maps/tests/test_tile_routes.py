@@ -57,3 +57,11 @@ def test_pack_not_configured(client, monkeypatch):
 def test_pack_file_missing(tmp_path, client, monkeypatch):
     monkeypatch.setenv(BASEMAP_SETTING, str(tmp_path / "gone.pmtiles"))
     assert client.get("/tiles/basemap/10/213/388").status_code == 503
+
+
+def test_setting_that_is_not_a_pack(tmp_path, client, monkeypatch):
+    junk = tmp_path / "junk.pmtiles"
+    junk.write_bytes(b"not a pack")
+    for path in [junk, tmp_path]:  # a file that is not a pack, and a folder
+        monkeypatch.setenv(BASEMAP_SETTING, str(path))
+        assert client.get("/tiles/basemap/10/213/388").status_code == 503, path
