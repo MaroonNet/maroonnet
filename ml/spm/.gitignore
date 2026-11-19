@@ -1,0 +1,15 @@
+# Case data and score tables are rebuilt by the CLI, never committed.
+data/
+results/
+
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+.DS_Store
+
+# Predictions are centred on real IPPs; never committed.
+predictions/

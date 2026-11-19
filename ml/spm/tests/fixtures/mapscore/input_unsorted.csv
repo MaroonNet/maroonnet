@@ -1,0 +1,8 @@
+Case_Name,IPP Lat,IPP Lon,Find Lat,Find Lot,Watershed,SubjectCategory,Eco Region,Terrain,Distance
+T01,39.60,-105.60,39.61,-105.61,1,Hiker,Temperate,Mountainous,1.0
+T02,39.62,-105.62,39.625,-105.60,0,Hiker,Temperate,Mountainous,1.0
+T03,39.64,-105.64,39.66,-105.66,2,Child,Temperate,Mountainous,1.0
+T04,39.60,-105.60,39.61,-105.61,1,Hiker,Temperate,Mountainous,1.0
+T05,39.70,-105.70,39.70,-105.70,0,Dementia,Temperate,Flat,0.0
+T06,39.72,-105.72,39.73,-105.75,0,Mental Retardation,Temperate,Flat,1.0
+T07,39.74,-105.74,39.95,-105.50,0,Hiker,Temperate,Mountainous,1.0

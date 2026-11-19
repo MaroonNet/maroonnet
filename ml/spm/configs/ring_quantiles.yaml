@@ -1,0 +1,41 @@
+# Published ring distances, in km, per canonical category.
+#
+# Values are the straight-line IPP-to-find distance quartiles from Koester, R. (2008), Lost Person
+# Behavior (dbS Productions). The book is not online; the hiker table below is reproduced
+# identically, in MILES, by three open sources:
+#   * Sava, Twardy, Koester & Sonwalkar (2016), Transactions in GIS 20(1), Table 1, PDF p. 8
+#     ("Hiker lost person behavior table ... from Koester (2008)"; units not stated)
+#   * Ferguson, IGT4SAR, IPP_EuclideanDistance2.py (GPL-3; header: the distances "are provided by
+#     Robert Koester (dbS Productions - Lost Person Behavior) and are not included in this
+#     copyright"); the code multiplies by 1.6093 for kilometres, so the table is in miles
+#   * Twardy, MapScore, arc-models/distance_by_category.py (buffers in "Miles")
+# Miles are confirmed by arithmetic: 0.7/1.9/3.6/11.3 mi = 1.13/3.06/5.79/18.2 km, matching the
+# ISRID km column in Doherty et al. (2014). Values here are miles x 1.609344, rounded to 0.01 km.
+# TODO (team): check the book page for the hiker table and add it to `source`.
+#
+# The ring model keys on category only, so pick the ecoregion/terrain row that matches the cases
+# being scored. For the MapScore Arizona set, 32 of 50 hikers are Dry/Flat and 18 Dry/Mountainous.
+# All four hiker rows (miles, n):
+#   Temperate Mountainous  n=568   0.7  1.9  3.6  11.3
+#   Temperate Flat         n=274   0.4  1.1  2.0   6.1
+#   Dry Mountainous        n=221   1.0  2.0  4.0  11.9
+#   Dry Flat               n= 58   0.8  1.3  4.1   8.1
+#   Urban                  n=  8   median 1.6
+# Newer ISRID 2.0 figure (Koester, ICAR 2025 slides, slide 28, "Hiker, mountainous, Temperate",
+# n ~286, units not stated on the slide): 1.0 / 2.9 / 5.1 / 12.0. Not used here.
+#
+# Only q25/q50/q75 are read by the model (lognormal matched to median and IQR); q95 is kept for
+# checking the fit. Other categories (hunter, child, dementia, ...) are in the same IGT4SAR file;
+# add rows here only with the row label and n.
+
+categories:
+  hiker:
+    # Koester 2008, hiker, Dry ecoregion, Flat terrain, n=58 (miles 0.8 / 1.3 / 4.1 / 8.1)
+    q25: 1.29
+    q50: 2.09
+    q75: 6.60
+    q95: 13.04
+    source: >-
+      Koester 2008, Lost Person Behavior, hiker distance table, Dry/Flat row (n=58), book page
+      unverified; as reproduced in Sava et al. 2016 Table 1 p. 8 and Ferguson IGT4SAR
+      IPP_EuclideanDistance2.py. Converted from miles.
