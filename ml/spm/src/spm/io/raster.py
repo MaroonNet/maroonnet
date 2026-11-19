@@ -7,8 +7,9 @@ The region where mass_rank <= 0.5 is the smallest area holding half the mass.
 Raw density spans several orders of magnitude and colours badly.
 
 Outputs
-    write_geotiff      3 float32 bands: probability, mass_rank, flag (1 = out of range);
-                       tags carry p_outside, model name/version and the band levels
+    write_geotiff      3 float32 bands: probability, mass_rank, flagged (1 = no elevation
+                       data, or the terrain multiplier was capped); tags carry p_outside,
+                       model name/version, the band levels and the prediction's notes
     write_heatmap_png  report figure: mass bands, trails/roads from the stack, IPP
     write_web_overlay  RGBA PNG in Web Mercator plus a JSON with its corner
                        coordinates, for a MapLibre/Leaflet image source
@@ -37,6 +38,7 @@ BAND_RGBA = (
     (253, 204, 138, 60),
 )
 BAND_NAMES = ("search 1st", "search 2nd", "search 3rd", "search 4th")
+NOTE_PREFIX = "spm_"  # GeoTIFF tag prefix of Prediction.notes
 
 
 def mass_rank(prob: np.ndarray) -> np.ndarray:
@@ -87,14 +89,16 @@ def write_geotiff(
         dst.write(flags.astype(np.float32), 3)
         dst.set_band_description(1, "probability")
         dst.set_band_description(2, "mass_rank")
-        dst.set_band_description(3, "out_of_range")
+        dst.set_band_description(3, "flagged")
         dst.update_tags(
             p_outside=f"{pred.p_outside:.6f}",
             model=pred.model,
             model_version=pred.model_version,
             levels=",".join(str(v) for v in levels),
+            flagged="1 = no elevation data, or the stacked terrain multiplier was capped",
             note="student prototype; not certified for life-safety use",
             **({"ipp": f"{ipp[0]:.6f},{ipp[1]:.6f}"} if ipp else {}),
+            **{NOTE_PREFIX + k: v for k, v in pred.notes.items()},
         )
     return path
 
@@ -216,6 +220,7 @@ def write_web_overlay(pred: Prediction, png_path: Path, json_path: Path, levels=
                 "model": pred.model,
                 "model_version": pred.model_version,
                 "note": "student prototype; not certified for life-safety use",
+                "notes": dict(pred.notes),
             },
             indent=2,
         )
@@ -268,5 +273,6 @@ def read_geotiff(path: Path) -> tuple[Prediction, tuple[float, float] | None]:
         model_version=tags.get("model_version", "0"),
         p_outside=float(tags.get("p_outside", 0.0)),
         flags=flags,
+        notes={k[len(NOTE_PREFIX) :]: v for k, v in tags.items() if k.startswith(NOTE_PREFIX)},
     )
     return pred, (tuple(float(v) for v in ipp.split(",")) if ipp else None)

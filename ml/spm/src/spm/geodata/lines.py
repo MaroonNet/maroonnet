@@ -34,6 +34,10 @@ from spm.geodata.dem import window_lonlat_bounds
 from spm.geodata.grid import Window
 
 # class -> (OSM key, values)
+# Bump when CLASSES or the mask rules change: cached stacks built under an older
+# schema are then rebuilt instead of being silently reused (geodata.build).
+SCHEMA = 1
+
 CLASSES = {
     "trail": ("highway", {"path", "footway", "bridleway", "steps"}),
     "road": (

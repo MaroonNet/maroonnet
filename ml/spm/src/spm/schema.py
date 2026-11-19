@@ -62,9 +62,13 @@ class Prediction:
     model: str
     model_version: str = "0"
     p_outside: float = 0.0
-    # True where the model is extrapolating (terrain unlike anything in training).
-    # (P)MP can hatch these cells; None = model does not report confidence.
+    # True where the terrain part of the map should not be trusted: no elevation data, or
+    # the stacked terrain multiplier was capped. (P)MP can hatch these cells; None = the
+    # model does not report it.
     flags: np.ndarray | None = None
+    # What a reader of the map must know that the grid cannot show: the distance ring
+    # used, elevation coverage, any warning. Written to the GeoTIFF tags and read back.
+    notes: dict[str, str] = field(default_factory=dict)
 
     def check(self, atol: float = 1e-6) -> None:
         """Raise if the prediction breaks the contract."""

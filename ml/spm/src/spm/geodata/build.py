@@ -17,6 +17,7 @@ seconds rather than a fresh download and rasterization.
 
 from __future__ import annotations
 
+import logging
 import math
 from collections.abc import Sequence
 from pathlib import Path
@@ -27,6 +28,8 @@ from spm.geodata import dem, lines
 from spm.geodata.grid import Window, utm_epsg
 from spm.geodata.stack import FeatureStack
 from spm.schema import Case
+
+log = logging.getLogger(__name__)
 
 
 def window_for(case: Case, side_m: float, res: float) -> Window | None:
@@ -63,7 +66,13 @@ class StackBuilder:
         self._regions: list[FeatureStack] = []
         if cache_dir is not None:
             for path in sorted(Path(cache_dir, "regions").glob("*.npz")):
-                self._regions.append(_load_stack(path))
+                try:
+                    region = _load_stack(path)
+                    if not _has_elevation(region.layers):
+                        raise ValueError("it holds no elevation (built offline); rebuild it")
+                    self._regions.append(region)
+                except (ValueError, OSError) as err:
+                    log.warning("skipping region stack %s: %s", path.name, err)
 
     def _overlapping(self, files: list[Path], window: Window) -> list[Path]:
         lon0, lat0, lon1, lat1 = dem.window_lonlat_bounds(window)
@@ -87,7 +96,22 @@ class StackBuilder:
         if sf:
             per_class["stream"] = sf
             source += f"+streams:{'+'.join(p.name for p in sf)}"
+        if lines.SCHEMA > 1:
+            source += f"+schema:{lines.SCHEMA}"
         return per_class, source
+
+    def _cache_ok(self, path: Path, stored_source: str, window: Window) -> bool:
+        """A cached stack is reused only if its inputs match and none is newer than it."""
+        per_class, source = self.sources(window)
+        if stored_source != source:
+            log.info("rebuilding %s: inputs changed (%s)", path.name, stored_source)
+            return False
+        files = {p for ps in per_class.values() for p in ps}
+        newest = max((p.stat().st_mtime for p in files if p.exists()), default=0.0)
+        if newest > path.stat().st_mtime:
+            log.info("rebuilding %s: a line file is newer than the cached stack", path.name)
+            return False
+        return True
 
     def _cache_path(self, window: Window) -> Path | None:
         if self.cache_dir is None:
@@ -111,11 +135,11 @@ class StackBuilder:
         _, source = self.sources(window)
         if path is not None and path.exists():
             stack = _load_stack(path)
-            if stack.source == source:
+            if self._cache_ok(path, stack.source, window) and _has_elevation(stack.layers):
                 self._add_region(stack)
                 return stack
-        stack = self.build(window)
-        if path is not None:
+        stack, keep = self._build(window)
+        if path is not None and keep:
             path.parent.mkdir(parents=True, exist_ok=True)
             np.savez_compressed(path, _source=np.array(stack.source), **stack.layers)
         self._add_region(stack)
@@ -165,10 +189,21 @@ class StackBuilder:
         return None
 
     def build(self, window: Window) -> FeatureStack:
+        return self._build(window)[0]
+
+    def _build(self, window: Window) -> tuple[FeatureStack, bool]:
+        """(stack, keep): ``keep`` is False when the stack must not be cached, because a
+        tile could not be read (offline) or the window has no elevation at all. A stack
+        built without its elevation would otherwise be reused after the tiles arrive."""
         per_class, source = self.sources(window)
-        layers = {"dem": dem.read_dem(window, self.tile_dir)}
+        failed: list[str] = []
+        elev = dem.read_dem(window, self.tile_dir, failed=failed)
+        layers = {"dem": elev}
         layers.update(lines.masks(per_class, window))
-        return FeatureStack(window=window, layers=layers, source=source)
+        keep = not failed and bool(np.isfinite(elev).any())
+        if not keep:
+            log.warning("stack for %s is not cached: elevation is incomplete", _stack_name(window))
+        return FeatureStack(window=window, layers=layers, source=source), keep
 
     def __call__(self, case: Case | None, window: Window) -> FeatureStack:
         cropped = self.crop(window)
@@ -176,16 +211,22 @@ class StackBuilder:
             return cropped
         path = self._cache_path(window)
         if path is not None and path.exists():
-            _, source = self.sources(window)
             with np.load(path) as z:
-                if str(z["_source"]) == source:
+                source = str(z["_source"])
+                if self._cache_ok(path, source, window) and _has_elevation(z):
                     layers = {k: z[k] for k in z.files if k != "_source"}
                     return FeatureStack(window=window, layers=layers, source=source)
-        stack = self.build(window)
-        if path is not None:
+        stack, keep = self._build(window)
+        if path is not None and keep:
             path.parent.mkdir(parents=True, exist_ok=True)
             np.savez_compressed(path, _source=np.array(stack.source), **stack.layers)
         return stack
+
+
+def _has_elevation(layers) -> bool:
+    """False for a stack saved with no elevation at all (built offline by an earlier
+    version): such a file is rebuilt instead of reused."""
+    return "dem" not in layers or bool(np.isfinite(layers["dem"]).any())
 
 
 def _stack_name(w: Window) -> str:
@@ -194,7 +235,10 @@ def _stack_name(w: Window) -> str:
 
 def _load_stack(path: Path) -> FeatureStack:
     """A stack saved by this module; the window is parsed from the file name."""
-    epsg, x0, y0, res, n = path.stem.split("_")
+    parts = path.stem.split("_")
+    if len(parts) != 5:
+        raise ValueError(f"not a stack file name (epsg_x0_y0_res_n): {path.name}")
+    epsg, x0, y0, res, n = parts
     window = Window(int(epsg), float(x0), float(y0), float(res), int(n))
     with np.load(path) as z:
         layers = {k: z[k] for k in z.files if k != "_source"}

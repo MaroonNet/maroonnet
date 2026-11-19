@@ -13,7 +13,7 @@ The file holds no case data and no coordinates of any person.
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -27,7 +27,14 @@ FORMAT = 1
 
 
 def _spec_to_dict(s: FeatureSpec) -> dict:
-    return {"name": s.name, "edges": list(s.edges), "prior": list(s.prior), "source": s.source}
+    return {
+        "name": s.name,
+        "edges": list(s.edges),
+        "prior": list(s.prior),
+        "source": s.source,
+        "published": s.published,
+        "missing_bin": s.missing_bin,
+    }
 
 
 def _spec_from_dict(d: dict) -> FeatureSpec:
@@ -36,6 +43,8 @@ def _spec_from_dict(d: dict) -> FeatureSpec:
         edges=tuple(float(e) for e in d["edges"]),
         prior=tuple(None if v is None else float(v) for v in d["prior"]),
         source=d.get("source", ""),
+        published=bool(d.get("published", True)),
+        missing_bin=d.get("missing_bin"),
     )
 
 
@@ -62,7 +71,7 @@ def to_dict(model: HybridModel | BayesModel, meta: dict | None = None) -> dict:
     """JSON-ready description of a fitted model."""
     doc = {
         "format": FORMAT,
-        "created_utc": datetime.now(UTC).isoformat(timespec="seconds"),
+        "created_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "name": model.name,
         "version": model.version,
         "specs": [_spec_to_dict(s) for s in model.specs],

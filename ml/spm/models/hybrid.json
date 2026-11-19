@@ -48,7 +48,8 @@
         1.0,
         1.6
       ],
-      "source": "Jacobs 2015 pp. 20-21 (low points 1.9x, high points 1.6x, uninjured); Table 1 p. 28"
+      "source": "Jacobs 2015 pp. 20-21 (low points 1.9x, high points 1.6x, uninjured); Table 1 p. 28",
+      "missing_bin": 1
     }
   ],
   "feature_res": 10.0,
