@@ -1,41 +1,89 @@
-import { addProtocol, setWorkerUrl, type RasterDEMSourceSpecification, type StyleSpecification } from "maplibre-gl"
+import { addProtocol, setWorkerUrl, type FilterSpecification, type RasterDEMSourceSpecification, type StyleSpecification } from "maplibre-gl"
+import { useState } from 'react'
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import mlcontour from 'maplibre-contour'
 import Map, { NavigationControl, ScaleControl } from 'react-map-gl/maplibre'
 import 'maplibre-gl/dist/maplibre-gl.css'
+import { sendError } from '../diagnostics/errorLog'
 import { INITIAL_VIEW, MAP_STYLE_URL, MAX_ZOOM } from "./config"
+import LayerToggles from './LayerToggles'
+import { hideGroups, narrowTrails, type StyleMetadata } from './styleChoices'
 
 setWorkerUrl(workerUrl)
+
+// The style is fetched first because it says how deep the terrain goes, which the contour
+// plug-in needs before the map loads the style. Each await waits for a promise (a placeholder
+// for an answer still on its way) to be filled. They sit outside any function, so the whole
+// file pauses here until the style arrives or fails.
+let style: StyleSpecification | null = null
+let styleError = ''  // why the style failed, shown on the page
+try {
+    const response = await fetch(MAP_STYLE_URL)
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)  // an answer, but an error
+    style = await response.json()
+} catch (error) {
+    styleError = String(error)
+    sendError('style', error)
+}
 
 // The contour plug-in's supply of height (DEM) tiles. It answers the style's dem-shared://
 // address, downloading each terrain tile once for both the hillshade and the contour lines.
 // Must be set up before the map loads its style.
-//
-// The style is fetched first because it says how deep the terrain goes, which the contour
-// plug-in needs before the map loads the style. Each await waits for a promise (a placeholder
-// for an answer still on its way) to be filled. They sit outside any function, so the whole
-// file pauses at this line until the style arrives.
-const style: StyleSpecification = await (await fetch(MAP_STYLE_URL)).json()
-const terrain = style.sources.terrain as RasterDEMSourceSpecification
+if (style) {
+    const terrain = style.sources.terrain as RasterDEMSourceSpecification
+    const demSource = new mlcontour.DemSource({
+        url: `${location.origin}/tiles/terrain/{z}/{x}/{y}`,  // absolute: the plug-in fetches from a worker
+        encoding: 'terrarium',
+        maxzoom: terrain.maxzoom!,  // the backend always sets it
+        worker: true,
+    })
+    demSource.setupMaplibre({ addProtocol })
+}
 
-const demSource = new mlcontour.DemSource({
-    url: `${location.origin}/tiles/terrain/{z}/{x}/{y}`,  // absolute: the plug-in fetches from a worker
-    encoding: 'terrarium',
-    maxzoom: terrain.maxzoom!,  // the backend always sets it
-    worker: true,
-})
-demSource.setupMaplibre({ addProtocol })
+let tileErrorSent = false  // a tile failure repeats for every tile, so only the first is sent
 
 function MissionMap() {
+    const [hidden, setHidden] = useState<string[]>([])  // the layer groups the user has hidden
+    const [pickedUses, setPickedUses] = useState<string[]>([])  // the trail uses ticked; none: all trails
+
+    if (!style) {
+        return (
+            <p style={{ padding: 16, font: '14px system-ui, sans-serif' }}>
+                The map could not load its style from the backend ({styleError}).
+                Check that the backend is running, then reload the page.
+            </p>
+        )
+    }
+    const metadata = style.metadata as StyleMetadata  // the backend always sets it
+    // A trail open to any ticked use is drawn.
+    const pickedFilters = metadata.trail_uses.filter((use) => pickedUses.includes(use.id)).map((use) => use.filter)
+    const trailFilter = pickedFilters.length ? ['any', ...pickedFilters] as FilterSpecification : undefined
     return (
         <Map
             initialViewState={INITIAL_VIEW}
-            mapStyle={style}
+            mapStyle={narrowTrails(hideGroups(style, hidden), trailFilter)}
             maxZoom={MAX_ZOOM}
+            attributionControl={{ compact: true }}  // the data credits only, without MapLibre's own link
             style={{width: '100%', height: '100%'}}
+            onError={(e) => {
+                console.error(e.error)  // every error, as react-map-gl prints when there is no onError
+                if ('tile' in e) {
+                    if (tileErrorSent) return
+                    tileErrorSent = true
+                }
+                sendError('map', e.error)
+            }}
         >
             <NavigationControl position="top-right" />
             <ScaleControl />
+            <LayerToggles
+                groups={metadata.groups}
+                hidden={hidden}
+                setHidden={setHidden}
+                trailUses={metadata.trail_uses}
+                pickedUses={pickedUses}
+                setPickedUses={setPickedUses}
+            />
         </Map>
     )
 }
