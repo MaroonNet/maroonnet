@@ -80,6 +80,7 @@ features:
     # 0.85x mid, 1.77x high, so the direction matches Jacobs; adding the feature gains
     # +0.008 nats/find for Model A and +0.009 for Model B, both with CIs that include zero.
     # Model B only (published: false): Jacobs' values, our thresholds and neighbourhood.
+    missing_bin: 1  # no elevation data -> the reference (middle) bin, never 'high ground'
     published: false
     edges: [0.2, 0.8]
     multipliers: [1.9, 1.0, 1.6]

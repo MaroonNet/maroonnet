@@ -8,7 +8,10 @@ spm nhd-lines GPKG            extract streams from a USGS NHD state GeoPackage (
 spm stacks --source nysdec    build and cache terrain stacks around each case
 spm evaluate-terrain          leave-one-region-out terrain models on find-only cases (NYS DEC)
 spm gate-b                    Model B (terrain from NY finds) vs the ring on Arizona
+spm fit --model model_a       fit a model and write models/<name>.json
+spm predict MODEL.json --ipp LON LAT --category hiker   probability raster + heatmap for one IPP
 spm fetch-dem LON_MIN LAT_MIN LON_MAX LAT_MAX           pre-download 3DEP tiles for offline use
+spm update PRED.tif --searched sectors.geojson          re-weight a raster after a search
 spm region LON_MIN LAT_MIN LON_MAX LAT_MAX              prebuild the terrain for an operating area
 spm holdout --source mapscore --frac 0.33 --seed N      freeze a test set (configs/holdout.yaml)
 """
@@ -16,7 +19,11 @@ spm holdout --source mapscore --frac 0.33 --seed N      freeze a test set (confi
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
+import hashlib
+import logging
+import os
+import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -28,10 +35,36 @@ from spm.cases.split import DEFAULT_PATH as HOLDOUT_PATH
 from spm.cases.split import load_holdout, make_holdout, partition, write_holdout
 from spm.eval.runner import evaluate, summarize
 from spm.features.spec import load_specs
+from spm.geodata.grid import Window
 from spm.models import REGISTRY, RingModel
 from spm.models.bayes import BayesModel
 
-ROOT = Path.cwd()
+
+def _find_root() -> Path:
+    """The project folder holding configs/ and models/.
+
+    ``SPM_ROOT`` if set; else the first of the working directory and its parents that
+    has configs/prior_art.yaml; else the package's own checkout (src/spm/../..).
+    """
+    env = os.environ.get("SPM_ROOT")
+    if env:
+        return Path(env)
+    for d in [Path.cwd(), *Path.cwd().parents]:
+        if (d / "configs" / "prior_art.yaml").exists():
+            return d
+    return Path(__file__).resolve().parents[2]
+
+
+ROOT = _find_root()
+
+# `spm predict` uses terrain only when elevation covers at least this share of the window.
+# Below it the map would be part terrain, part guess; the command refuses, or with
+# --allow-partial draws the distance ring alone and says so. DRAFT VALUE: the team sets it.
+MIN_DEM_COVERAGE = 0.95
+
+
+def _stamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
 
 
 def _factories(names: list[str], quantiles_path: Path) -> dict:
@@ -70,12 +103,59 @@ def _builder(args, terrain: Path):
     )
 
 
+def _apply_searched(pred, paths):
+    """Multiply in the POD of each searched-area file (GeoJSON sectors or a POD GeoTIFF)."""
+    from spm.io.coverage import pod_from_geojson, pod_from_raster
+    from spm.models.update import apply_search, combine_pod
+
+    layers = []
+    for p in paths:
+        is_tif = p.suffix.lower() in (".tif", ".tiff")
+        layers.append(
+            pod_from_raster(p, pred.window) if is_tif else pod_from_geojson(p, pred.window)
+        )
+    pod = combine_pod(layers)
+    before = pred.p_outside
+    pred = apply_search(pred, pod)
+    print(
+        f"searched {float((pod > 0).mean()):.1%} of cells; "
+        f"outside this map {before:.1%} -> {pred.p_outside:.1%}"
+    )
+    return pred
+
+
+def _write_prediction(pred, stem, case, stack, extra):
+    from spm.io.raster import write_geotiff, write_heatmap_png, write_web_overlay
+
+    ipp = (case.ipp.lon, case.ipp.lat) if case and case.ipp else None
+    tif = write_geotiff(pred, stem.with_suffix(".tif"), ipp=ipp)
+    png = write_heatmap_png(pred, stem.with_suffix(".png"), case=case, stack=stack)
+    overlay = stem.with_name(stem.name + "_overlay")
+    web = write_web_overlay(pred, overlay.with_suffix(".png"), overlay.with_suffix(".json"))
+    flagged = 0.0 if pred.flags is None else float(pred.flags.mean())
+    w = pred.window
+    print(f"{pred.model} v{pred.model_version}: {w.n}x{w.n} at {w.res:g} m")
+    print(
+        f"outside this map: {pred.p_outside:.1%}; flagged cells (no elevation, or terrain "
+        f"multiplier capped): {flagged:.1%}"
+    )
+    for p in (tif, png, web, web.with_suffix(".json"), *extra):
+        print(f"  {p}")
+
+
+def _holdout_stamp(path: Path, ids: set[str]) -> dict:
+    """Which frozen test set a model was fitted against: id count and the file's hash."""
+    digest = hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
+    return {"file": path.name, "n_ids": len(ids), "sha256": digest}
+
+
 def _named(model, name):
     model.name = name
     return model
 
 
 def main(argv: list[str] | None = None) -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     ap = argparse.ArgumentParser(prog="spm")
     ap.add_argument("--data", type=Path, default=ROOT / "data")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -141,6 +221,76 @@ def main(argv: list[str] | None = None) -> None:
     g.add_argument("--lines", type=Path, nargs="*", default=None, help="default: osm_lines*")
     g.add_argument("--streams", type=Path, nargs="*", default=None, help="default: nhd_lines*")
     g.add_argument("--out", type=Path, default=ROOT / "results")
+    g.add_argument(
+        "--allow-no-holdout",
+        action="store_true",
+        help="run without configs/holdout.yaml: leave-one-out over every IPP case",
+    )
+
+    f = sub.add_parser("fit", help="fit a model and write it as JSON")
+    f.add_argument("--model", default="model_a", choices=["model_a", "hybrid"])
+    f.add_argument("--train-source", default="nysdec", help="find-only source for terrain weights")
+    f.add_argument("--train-situation", default="Lost")
+    f.add_argument("--ring-source", default="mapscore", help="IPP cases the ring is fitted on")
+    f.add_argument("--res", type=float, default=100.0)
+    f.add_argument("--feature-res", type=float, default=10.0)
+    f.add_argument("--radius", type=float, default=1000.0)
+    f.add_argument(
+        "--drop", nargs="*", default=[], metavar="FEATURE", help="leave these features out of B"
+    )
+    f.add_argument("--lam-w", type=float, default=1.0, help="L2 pull of weights toward prior")
+    f.add_argument(
+        "--lam-region",
+        type=float,
+        default=300.0,
+        help="L2 pull of region corrections toward 0 (300: 5-fold CV on the 71 AZ "
+        "training cases, 2026-11-05; the Arizona cases help through the shared weights)",
+    )
+    f.add_argument("--lines", type=Path, nargs="*", default=None)
+    f.add_argument("--streams", type=Path, nargs="*", default=None)
+    f.add_argument("--out", type=Path, default=None, help="default: models/<model>.json")
+    f.add_argument(
+        "--allow-no-holdout",
+        action="store_true",
+        help="fit even though configs/holdout.yaml is missing (every case is then trainable)",
+    )
+
+    pr = sub.add_parser("predict", help="probability raster + heatmap for one IPP")
+    pr.add_argument("model", type=Path, help="model JSON from `spm fit`")
+    pr.add_argument("--ipp", type=float, nargs=2, metavar=("LON", "LAT"), required=True)
+    pr.add_argument("--category", default="hiker")
+    pr.add_argument("--region", default=None, help="region code for Model B's correction")
+    pr.add_argument("--side", type=float, default=25_000.0, help="window side, metres")
+    pr.add_argument(
+        "--res",
+        type=float,
+        default=20.0,
+        help="output cell size, metres (the model's weights are point multipliers, so any "
+        "multiple of its feature resolution works; training used 100)",
+    )
+    pr.add_argument("--lines", type=Path, nargs="*", default=None)
+    pr.add_argument("--streams", type=Path, nargs="*", default=None)
+    pr.add_argument("--out", type=Path, default=None, help="output stem; default predictions/<ts>")
+    pr.add_argument("--elapsed-h", type=float, default=None, help="hours since the IPP time")
+    pr.add_argument("--max-slope-deg", type=float, default=None, help="impassable above this")
+    pr.add_argument("--searched", type=Path, nargs="*", default=None, help="POD GeoJSON/GeoTIFF")
+    pr.add_argument(
+        "--allow-partial",
+        action="store_true",
+        help="run although terrain is incomplete: with no line file or too little elevation "
+        "the map is the distance ring alone, and --elapsed-h treats cells without elevation "
+        "as unreachable",
+    )
+    pr.add_argument(
+        "--allow-pooled-ring",
+        action="store_true",
+        help="for a category the model has no ring for, use the ring pooled over all categories",
+    )
+
+    up = sub.add_parser("update", help="re-weight a prediction raster after a search")
+    up.add_argument("tif", type=Path, help="GeoTIFF from `spm predict` or an earlier update")
+    up.add_argument("--searched", type=Path, nargs="+", required=True, help="POD GeoJSON/GeoTIFF")
+    up.add_argument("--out", type=Path, default=None, help="output stem; default <tif stem>_u<N>")
 
     ho = sub.add_parser("holdout", help="draw and freeze the test set")
     ho.add_argument("--source", default="mapscore", help="cases of this source are split")
@@ -172,7 +322,9 @@ def main(argv: list[str] | None = None) -> None:
         print("\ncases per category:\n" + df["category"].value_counts().to_string())
 
     elif args.cmd == "evaluate":
-        cases = load_cases(args.data)
+        cases, held = partition(load_cases(args.data), load_holdout(ROOT / HOLDOUT_PATH))
+        if held:
+            print(f"frozen test set: {len(held)} cases excluded (scored only by gate-b)")
         per_case = evaluate(
             _factories(args.models.split(","), args.quantiles),
             cases,
@@ -181,7 +333,7 @@ def main(argv: list[str] | None = None) -> None:
         )
         summary = summarize(per_case)
         args.out.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.now().strftime("%Y%m%d-%H%M")
+        stamp = _stamp()
         per_case.to_csv(args.out / f"scores_{stamp}.csv", index=False)
         summary.to_csv(args.out / f"summary_{stamp}.csv", index=False)
         with pd.option_context("display.width", 120):
@@ -250,7 +402,7 @@ def main(argv: list[str] | None = None) -> None:
         summary = paired_summary(per_case)
         regions = by_region(per_case)
         args.out.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.now().strftime("%Y%m%d-%H%M")
+        stamp = _stamp()
         per_case.to_csv(args.out / f"terrain_scores_{stamp}.csv", index=False)
         summary.to_csv(args.out / f"terrain_summary_{stamp}.csv", index=False)
         with pd.option_context("display.width", 140):
@@ -269,6 +421,11 @@ def main(argv: list[str] | None = None) -> None:
         filled = ", ".join(s.name for s in specs if s.prior_complete and s.published)
         print(f"Model A (published features only): {filled or 'none'}")
         held_ids = load_holdout(ROOT / HOLDOUT_PATH)
+        if not held_ids and not args.allow_no_holdout:
+            raise SystemExit(
+                f"no frozen test set at {ROOT / HOLDOUT_PATH}: refusing to score. "
+                "Run `spm holdout --seed N` first, or pass --allow-no-holdout."
+            )
         cases, held = partition(load_cases(args.data), held_ids)
         train = [
             c
@@ -288,6 +445,17 @@ def main(argv: list[str] | None = None) -> None:
             test, ipp_train = ipp_train, []
             print("no configs/holdout.yaml: leave-one-out over all IPP cases (no AZ training)")
         print(f"terrain trained on {len(train)} {args.train_source} finds")
+        prior_runs = len(list(args.out.glob("gate_b_paired_*.csv"))) if args.out.exists() else 0
+        if prior_runs:
+            print(
+                f"NOTE: this test set has already been scored {prior_runs} time(s); after "
+                "design changes made with those results in view, treat the verdict as a "
+                "development number, not a test"
+            )
+        print(
+            "ring: refitted per fold on the training cases for every model (model_a.json "
+            "ships the published ring instead)"
+        )
 
         def terrain_model(name, use, extra=()):
             m = HybridModel(
@@ -354,7 +522,7 @@ def main(argv: list[str] | None = None) -> None:
         ]
         result = pd.DataFrame(rows).round(3)
         args.out.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.now().strftime("%Y%m%d-%H%M")
+        stamp = _stamp()
         per_case.to_csv(args.out / f"gate_b_scores_{stamp}.csv", index=False)
         result.to_csv(args.out / f"gate_b_paired_{stamp}.csv", index=False)
         with pd.option_context("display.width", 140):
@@ -380,6 +548,197 @@ def main(argv: list[str] | None = None) -> None:
         print("  vs ring       " + verdict("hybrid_ny", "ring"))
         print("  Model A       " + verdict("model_a", "ring"))
         print(f"written to {args.out}/")
+
+    elif args.cmd == "fit":
+        from spm.io.artifact import save_model
+        from spm.models.hybrid import HybridModel
+
+        builder = _builder(args, terrain)
+        specs = load_specs(ROOT / "configs" / "prior_art.yaml")
+        held_ids = load_holdout(ROOT / HOLDOUT_PATH)
+        if not held_ids and not args.allow_no_holdout:
+            raise SystemExit(
+                f"no frozen test set at {ROOT / HOLDOUT_PATH}: refusing to fit on every case. "
+                "Run `spm holdout --seed N` first, or pass --allow-no-holdout."
+            )
+        q = (yaml.safe_load((ROOT / "configs" / "ring_quantiles.yaml").read_text()) or {}).get(
+            "categories"
+        ) or {}
+        q = {k: v for k, v in q.items() if v and all(v.get(x) for x in ("q25", "q50", "q75"))}
+        cases, held = partition(load_cases(args.data), held_ids)
+        if held:
+            print(f"holdout: {len(held)} frozen test cases excluded from every fit")
+        ring_cases = [c for c in cases if c.source == args.ring_source and c.ipp is not None]
+        ring = RingModel(quantiles=q)
+        if args.model == "model_a":
+            model = BayesModel(
+                specs, prior=ring, stack_provider=builder, feature_res=args.feature_res
+            ).fit(ring_cases)
+            train_n = 0
+        else:
+            train = [
+                c
+                for c in cases
+                if c.source == args.train_source
+                and c.ipp is None
+                and args.train_situation in ("all", c.extra.get("situation"))
+            ]
+            model = HybridModel(
+                [s for s in specs if s.name not in set(args.drop)],
+                builder,
+                prior=ring,
+                res=args.res,
+                find_radius_m=args.radius,
+                feature_res=args.feature_res,
+                lam_w=args.lam_w,
+                lam_region=args.lam_region,
+            )
+            model.prior.fit(ring_cases)  # the ring comes from IPP cases, not find-only ones
+            # find-only cases (no ring) plus the trainable IPP cases (ring strata, region delta)
+            model.fit_strata(model.strata(train + ring_cases))
+            train_n = model.n_train
+            for name, mult in model.multipliers().items():
+                print(f"  {name}: {np.round(mult / mult[-1], 2)}")
+            print(f"  cap on stacked multipliers: {np.exp(model.max_logm):.1f}x")
+        meta = {
+            "terrain_train": {
+                "source": args.train_source,
+                "situation": args.train_situation,
+                "n": train_n,
+            },
+            "ring_fit": {"source": args.ring_source, "n": len(ring_cases)},
+            "holdout_excluded": len(held),
+            "holdout": _holdout_stamp(ROOT / HOLDOUT_PATH, held_ids),
+            "shrinkage": {"lam_w": args.lam_w, "lam_region": args.lam_region},
+            "dropped_features": list(args.drop),
+            "ring_published_categories": sorted(q),
+            "ring_params": {
+                k: {"mu": v[0], "sigma": v[1], "n": ring.n_fit.get(k)}
+                for k, v in ring.params.items()
+            },
+            "line_files": [p.name for p in builder.line_files],
+            "stream_files": [p.name for p in builder.stream_files],
+        }
+        out = args.out or ROOT / "models" / f"{args.model}.json"
+        save_model(model, out, meta)
+        print(f"ring categories: {', '.join(sorted(ring.params))}")
+        print(f"wrote {out}")
+
+    elif args.cmd == "predict":
+        from spm.io.artifact import load_model
+        from spm.schema import Case, LonLat
+
+        builder = _builder(args, terrain)
+        model = load_model(args.model, stack_provider=builder)
+        lon, lat = args.ipp
+        case = Case(
+            case_id="live",
+            source="cli",
+            ipp=LonLat(lon, lat),
+            category=args.category,
+            region=args.region,
+        )
+        fr = model.feature_res
+        if fr is not None and abs(args.res / fr - round(args.res / fr)) > 1e-9:
+            raise SystemExit(f"--res {args.res:g} must be a multiple of the feature res {fr:g} m")
+        window = Window.around(lon, lat, side_m=args.side, res=args.res)
+        from spm.geodata import dem
+
+        ring = model.prior
+        if not ring.has_own_ring(args.category) and not args.allow_pooled_ring:
+            own = ", ".join(sorted(k for k in ring.params if k != "__all__")) or "none"
+            raise SystemExit(
+                f"{args.model.name} has no distance ring for category {args.category!r} "
+                f"(it has: {own}). Pass --allow-pooled-ring to use the ring pooled over "
+                "every category instead."
+            )
+        print("ring:", ring.describe(args.category))
+        line_files = builder.sources(window)[0]["trail"]
+        stack = builder(case, window)
+        cov = dem.coverage(stack["dem"]) if stack.has("dem") else 0.0
+        counts = ", ".join(
+            f"{k.removesuffix('_mask')} cells {int(stack[k].sum())}"
+            for k in stack.layers
+            if k != "dem"
+        )
+        print(f"terrain: elevation for {cov:.1%} of the window; {counts}")
+        problems = []
+        if not line_files:
+            problems.append("no trail/road file (osm_lines*.gpkg) covers this window")
+        if cov < MIN_DEM_COVERAGE:
+            problems.append(
+                f"elevation covers {cov:.0%} of the window, under {MIN_DEM_COVERAGE:.0%} "
+                "(offline, or tiles not fetched: run `spm fetch-dem` with the window bounds)"
+            )
+        if problems and not args.allow_partial:
+            raise SystemExit(
+                "terrain is incomplete: "
+                + "; ".join(problems)
+                + ". Pass --allow-partial for a distance-only map (the ring, no terrain)."
+            )
+        if problems:
+            pred = ring.predict(case, window)
+            pred.model, pred.model_version = f"{model.name}-ring-only", model.version
+            pred.flags = ~np.isfinite(stack["dem"])
+            pred.notes["warning"] = "terrain NOT used, distance ring only: " + "; ".join(problems)
+            print("WARNING:", pred.notes["warning"])
+        else:
+            if cov < 1.0:
+                print(f"elevation missing for {1 - cov:.1%} of the window (hatched on the map)")
+            pred = model.predict(case, window, stack)
+        pred.notes["ring"] = ring.describe(args.category)
+        pred.notes["elevation_coverage"] = f"{cov:.4f}"
+        pred.check()
+        stem = args.out or ROOT / "predictions" / _stamp()
+        extra = []
+        if args.elapsed_h is not None and cov < 1.0 and not args.allow_partial:
+            raise SystemExit(
+                f"--elapsed-h needs elevation everywhere, but {1 - cov:.1%} of the window has "
+                "none (offline, or tiles not fetched): run `spm fetch-dem` with the window "
+                "bounds, or pass --allow-partial to mark those cells unreachable."
+            )
+        if args.elapsed_h is not None:
+            from spm.geodata.travel import travel_hours
+            from spm.io.raster import write_band
+            from spm.models.update import apply_time_cap
+
+            hours = travel_hours(
+                stack["dem"],
+                window.res,
+                window.rowcol(lon, lat),
+                stack["trail_mask"] if stack.has("trail_mask") else None,
+                args.max_slope_deg,
+            )
+            pred = apply_time_cap(pred, hours, args.elapsed_h)
+            reach = float((hours <= args.elapsed_h).mean())
+            print(f"travel-time cap at {args.elapsed_h:g} h: {reach:.0%} of cells reachable")
+            extra.append(
+                write_band(
+                    stem.with_name(stem.name + "_travel_h.tif"),
+                    window,
+                    np.where(np.isfinite(hours), hours, -1.0),
+                    "travel_hours_from_ipp",
+                    speed="Tobler 1993 hiking function, x0.6 off trail",
+                    unreachable=-1,
+                )
+            )
+        if args.searched:
+            pred = _apply_searched(pred, args.searched)
+        pred.check()
+        _write_prediction(pred, stem, case, stack, extra)
+
+    elif args.cmd == "update":
+        from spm.io.raster import read_geotiff
+        from spm.schema import Case, LonLat
+
+        pred, ipp = read_geotiff(args.tif)
+        pred = _apply_searched(pred, args.searched)
+        pred.check()
+        n = pred.model.count("+search")
+        base = re.sub(r"_u\d+$", "", args.tif.stem)
+        stem = args.out or args.tif.with_name(f"{base}_u{n}")
+        case = Case(case_id="live", source="cli", ipp=LonLat(*ipp), category="?") if ipp else None
+        _write_prediction(pred, stem, case, None, [])
 
     elif args.cmd == "holdout":
         pool = [c for c in load_cases(args.data) if c.source == args.source and c.ipp]

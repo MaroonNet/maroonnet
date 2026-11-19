@@ -1,0 +1,107 @@
+{
+  "format": 1,
+  "created_utc": "2026-11-04T19:48:17+00:00",
+  "name": "bayes_prior_art",
+  "version": "1",
+  "specs": [
+    {
+      "name": "dist_trail_m",
+      "edges": [
+        40.0
+      ],
+      "prior": [
+        5.5,
+        1.0
+      ],
+      "source": "Jacobs 2015 p. 13: uninjured trail PDEN 8+-1 at 20 m cumulative offset, 5.5+-0.5 at 40 m; Table 1 p. 28: trails 5x uninjured, 7x injured. Trail data: OSM + USFS (Jacobs); here OSM."
+    },
+    {
+      "name": "dist_road_m",
+      "edges": [
+        40.0
+      ],
+      "prior": [
+        3.0,
+        1.0
+      ],
+      "source": "Jacobs 2015 p. 13: uninjured road PDEN 4.5+-0.4 at 20 m, 3+-0.2 within 40 m; injured 1.5+-0.3 at 40 m (p = .02). Table 1 p. 28: roads 3x uninjured, 1.5x injured."
+    },
+    {
+      "name": "dist_stream_m",
+      "edges": [
+        80.0
+      ],
+      "prior": [
+        1.8,
+        1.0
+      ],
+      "source": "Jacobs 2015 p. 18: uninjured stream PDEN 2.2+-0.3 at 40 m track offset, 1.8+-0.2 at 80 m; injured 3.4+-0.4 at 80 m. Table 1 p. 28: streams 2x uninjured, 3.5x injured."
+    }
+  ],
+  "feature_res": 10.0,
+  "ring": {
+    "name": "ring",
+    "min_cases": 8,
+    "pooled_only": false,
+    "quantiles": {
+      "hiker": {
+        "q25": 1.29,
+        "q50": 2.09,
+        "q75": 6.6,
+        "q95": 13.04,
+        "source": "Koester 2008, Lost Person Behavior, hiker distance table, Dry/Flat row (n=58), book page unverified; as reproduced in Sava et al. 2016 Table 1 p. 8 and Ferguson IGT4SAR IPP_EuclideanDistance2.py. Converted from miles."
+      }
+    },
+    "params": {
+      "__all__": [
+        1.2858498368877656,
+        1.203102849008894
+      ],
+      "hiker": [
+        0.7371640659767196,
+        1.2101202651220675
+      ]
+    },
+    "n_fit": {
+      "__all__": 71,
+      "hiker": -1
+    }
+  },
+  "meta": {
+    "terrain_train": {
+      "source": "nysdec",
+      "situation": "Lost",
+      "n": 0
+    },
+    "ring_fit": {
+      "source": "mapscore",
+      "n": 71
+    },
+    "holdout_excluded": 35,
+    "ring_published_categories": [
+      "hiker"
+    ],
+    "ring_params": {
+      "__all__": {
+        "mu": 1.2858498368877656,
+        "sigma": 1.203102849008894,
+        "n": 71
+      },
+      "hiker": {
+        "mu": 0.7371640659767196,
+        "sigma": 1.2101202651220675,
+        "n": -1
+      }
+    },
+    "line_files": [
+      "osm_lines.gpkg",
+      "osm_lines_arizona.gpkg"
+    ],
+    "stream_files": [
+      "nhd_lines.gpkg",
+      "nhd_lines_arizona.gpkg"
+    ]
+  },
+  "kind": "model_a",
+  "max_multiplier": null
+}
