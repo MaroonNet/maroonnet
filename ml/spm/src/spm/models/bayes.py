@@ -80,9 +80,9 @@ class BayesModel:
         design = aggregate.SubcellDesign.from_features(self.specs, feats, factor)
         logm = design.log_intensity(np.concatenate([s.log_prior() for s in self.specs]))
         logm = logm.reshape(window.shape)
-        flags = None
+        flags = aggregate.no_data(stack, factor)
         if self.max_multiplier is not None:
-            flags = logm > np.log(self.max_multiplier)
+            flags |= logm > np.log(self.max_multiplier)
             logm = np.minimum(logm, np.log(self.max_multiplier))
         pred = apply_log_multipliers(ring, logm, self.name, self.version)
         pred.flags = flags

@@ -22,6 +22,7 @@ area. Mass that falls beyond the window becomes ``p_outside``.
 
 from __future__ import annotations
 
+import logging
 import math
 
 import numpy as np
@@ -36,6 +37,12 @@ Z75 = norm.ppf(0.75)  # 0.6745: quartile z-score of the standard normal
 def lognormal_from_quartiles(q25: float, q50: float, q75: float) -> tuple[float, float]:
     """(mu, sigma) of log-distance from published 25/50/75% distances."""
     return math.log(q50), (math.log(q75) - math.log(q25)) / (2 * Z75)
+
+
+log = logging.getLogger(__name__)
+
+# Below this, the log-distance spread is a data artefact, not a usable ring.
+MIN_SIGMA = 0.1
 
 
 class RingModel:
@@ -67,10 +74,16 @@ class RingModel:
         self.params, self.n_fit = {}, {}
         for cat, v in logs.items():
             if cat == "__all__" or len(v) >= self.min_cases:
-                self.params[cat] = (
-                    float(np.mean(v)),
-                    float(np.std(v, ddof=1)) if len(v) > 1 else 1.0,
-                )
+                sigma = float(np.std(v, ddof=1)) if len(v) > 1 else 1.0
+                if sigma < MIN_SIGMA:
+                    log.warning(
+                        "ring for %r: %d cases at nearly one distance; sigma floored to %.2f",
+                        cat,
+                        len(v),
+                        MIN_SIGMA,
+                    )
+                    sigma = MIN_SIGMA
+                self.params[cat] = (float(np.mean(v)), sigma)
                 self.n_fit[cat] = len(v)
         for cat, q in self.quantiles.items():
             self.params[cat] = lognormal_from_quartiles(q["q25"], q["q50"], q["q75"])
@@ -80,7 +93,27 @@ class RingModel:
     def params_for(self, category: str) -> tuple[float, float]:
         if not self.pooled_only and category in self.params:
             return self.params[category]
+        if "__all__" not in self.params:
+            raise ValueError(
+                f"no ring for category {category!r}: fit the ring on IPP cases or add the "
+                f"category to ring_quantiles.yaml (have: {sorted(self.params) or 'nothing'})"
+            )
         return self.params["__all__"]
+
+    def has_own_ring(self, category: str) -> bool:
+        """True if ``category`` has a published or fitted ring of its own, so that
+        ``params_for`` does not fall back to the ring pooled over every category."""
+        return not self.pooled_only and category in self.params
+
+    def describe(self, category: str) -> str:
+        """Which ring ``category`` gets, in words, for the console and the map's tags."""
+        mu, _ = self.params_for(category)
+        key = category if self.has_own_ring(category) else "__all__"
+        n = self.n_fit.get(key)
+        origin = "published table" if n == -1 else f"fitted on {n} cases"
+        if key == "__all__":
+            origin = f"POOLED over all categories, {origin}; no ring for {category!r}"
+        return f"{category}: median {math.exp(mu):.2f} km ({origin})"
 
     def predict(self, case, window, stack=None):
         if case.ipp is None:
