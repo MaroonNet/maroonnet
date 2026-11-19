@@ -1,6 +1,18 @@
 # Root .gitignore
 # Each area (backend/*, frontend/*, ml) adds its own .gitignore when its stack is chosen.
 
+# Mission database files, wherever they are created. Never commit one: they hold real
+# positions and names of real people.
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.db
+missions/
+
+# Map packs, wherever they are created. Never commit one: a pack is hundreds of megabytes,
+# and it is downloaded or built, not written by hand.
+*.pmtiles
+
 # Secrets and local config
 .env
 .env.*
