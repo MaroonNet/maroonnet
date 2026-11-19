@@ -25,12 +25,12 @@ What the file actually contains (checked 2026-11-03):
 
 from __future__ import annotations
 
-import urllib.request
 from pathlib import Path
 
 import pandas as pd
 
 from spm.cases.categories import normalize
+from spm.download import fetch as download
 from spm.schema import Case, LonLat
 
 NAME = "nysdec"
@@ -62,8 +62,7 @@ def fetch(dest: Path) -> list[Path]:
     """Download the mission table into ``dest`` (skips the file if present)."""
     dest.mkdir(parents=True, exist_ok=True)
     path = dest / FILE
-    if not path.exists():
-        urllib.request.urlretrieve(URL, path)
+    download(URL, path)
     return [path]
 
 
