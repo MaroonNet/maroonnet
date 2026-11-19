@@ -17,12 +17,12 @@ downloaded at build time rather than committed to this repo.
 
 from __future__ import annotations
 
-import urllib.request
 from pathlib import Path
 
 import pandas as pd
 
 from spm.cases.categories import normalize
+from spm.download import fetch as download
 from spm.schema import Case, LonLat
 
 NAME = "mapscore"
@@ -68,8 +68,7 @@ def fetch(dest: Path) -> list[Path]:
     out = []
     for fname in FILES:
         path = dest / fname
-        if not path.exists():
-            urllib.request.urlretrieve(RAW_BASE + fname, path)
+        download(RAW_BASE + fname, path)
         out.append(path)
     return out
 
