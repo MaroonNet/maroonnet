@@ -9,11 +9,60 @@ PAPER = "#f4f1e8"
 WATER, WATER_LINE, WATER_TEXT = "#a9cfe6", "#3f8fc4", "#2a6a99"
 TRAIL, TRAIL_PAVED = "#b3261e", "#8c8c8c"
 TRACK, FOUR_WD, DIRT = "#8a5a2b", "#2f2418", "#b08850"
+CONTOUR, CONTOUR_INDEX = "#a0703f", "#7d4f22"
 PEAK_TEXT = "#4a3426"
 HALO = "rgba(255,255,255,0.85)"  # the pale rim around label text that keeps it readable over lines
 
+# The layer groups the user can hide, with each checkbox's label, in the order the web app lists
+# them. Every layer's group is one of these, or "base" (the background, which is never hidden).
+GROUPS = {
+    "trails": "Trails",
+    "backroads": "4WD & dirt roads",
+    "roads": "Paved roads",
+    "water": "Rivers, streams & lakes",
+    "peaks": "Peaks & passes",
+    "contours": "Contours",
+    "hillshade": "Hillshade",
+    "public_land": "Public land (forest, wilderness, BLM)",
+    "landcover": "Vegetation",
+    "sar_points": "Trailheads, huts, camps, helipads",
+    "places": "Towns & named places",
+}
+
+# Uses the user can narrow the trails to: each has a label and a filter, a condition on the
+# trail's OpenStreetMap tags. The web app adds it to each trail layer's own filter.
+# OpenStreetMap tag values that mean a use is allowed. "literal" marks the list as plain data, not a condition.
+ALLOWED = ["literal", ["yes", "designated", "permissive", "open"]]
+TRAIL_USES = {
+    # foot is not "no" or "private". A trail with no foot tag counts as allowed.
+    "hiking": ("Hiking allowed", ["!", ["in", ["coalesce", ["get", "foot"], "yes"], ["literal", ["no", "private"]]]]),
+    # The uses below need their tag set to an allowed value. A trail without the tag is not drawn.
+    "horse": ("Horse allowed", ["in", ["get", "horse"], ALLOWED]),
+    # A bicycle tag that allows bikes, or an mtb_scale tag (OpenStreetMap's mountain-bike difficulty rating).
+    "bike":("Bike allowed", ["any", ["in", ["get", "bicycle"], ALLOWED], ["has", "mtb_scale"]]),
+    "motorized": ("Motorcycle / ATV allowed", ["any", ["in", ["get", "motorcycle"], ALLOWED],
+                                               ["in", ["get", "atv"], ALLOWED],
+                                               ["in", ["get", "motor_vehicle"], ALLOWED]]),
+}
+
+# Credits the data's licences require on the map, set on each source. Plain text, not links: the map
+# works offline, and the style names no internet addresses. The terrain credit is the wording the
+# Copernicus licence requires; the US terrain (USGS) is public domain and needs none.
+OSM_CREDIT = "© OpenStreetMap contributors"
+TERRAIN_CREDIT = ("Terrain: DLR e.V. 2010-2014, Airbus Defence and Space GmbH 2014-2018, "
+                  "provided under COPERNICUS by the European Union and ESA. All rights reserved.")
+
 SRC = "basemap"
 BASEMAP_MAX_ZOOM = 14  # the basemap is built to zoom 14 (D16); MapLibre enlarges its tiles beyond that
+
+# Contour lines are traced in the browser: dem-contour:// asks the contour plug-in to trace them
+# from the shared height tiles. Heights are in feet (multiplier). thresholds lists, per zoom, the
+# spacing of the thin lines and of the thicker index lines: at zoom 12, every 100 ft and every 500 ft.
+CONTOUR_URL = ("dem-contour://{z}/{x}/{y}?contourLayer=contours&elevationKey=ele&levelKey=level"
+               "&multiplier=3.28084&thresholds=10*500*2500~11*200*1000~12*100*500~14*40*200~15*20*100")
+# Contour lines are traced for zooms up to 15. At zoom 15 there is a line for every 20 ft of
+# height, the most detail we draw. At zooms 16 and 17 the map shows zoom 15's lines, drawn larger.
+CONTOUR_MAX_ZOOM = 15
 
 # Noto Sans, from @fontsource/noto-sans 5.3.0 (SIL Open Font License 1.1: assets/fonts/LICENSE).
 # The style's font-faces hand MapLibre the font files, and it draws the letters itself.
@@ -28,11 +77,14 @@ def font_faces(origin: str) -> dict:
             "Noto Sans Italic": files("400-italic")}
 
 
-def layer(id, group, type, source_layer=None, **spec):
-    """One style layer. source_layer names the layer inside the basemap tiles that it draws."""
+def layer(id, group, type, source_layer=None, source=None, **spec):
+    """One style layer. source names the data it draws from: the basemap unless given.
+    source_layer names the part of that source's tiles it reads."""
     out = {"id": id, "type": type, "metadata": {"group": group}}
+    if source or source_layer:
+        out["source"] = source or SRC
     if source_layer:
-        out |= {"source": SRC, "source-layer": source_layer}
+        out["source-layer"] = source_layer
     return out | spec
 
 
@@ -86,6 +138,11 @@ LAYERS = [
                  "line-dasharray": ["match", ["get", "designation"],
                                     "wilderness", ["literal", [4, 2]], ["literal", [1, 0]]]}),
 
+    # ---- terrain: shading drawn from heights, lit from the north-west
+    layer("hillshade", "hillshade", "hillshade", source="terrain",
+          paint={"hillshade-exaggeration": 0.45, "hillshade-shadow-color": "rgba(60,50,40,0.55)",
+                 "hillshade-highlight-color": "rgba(255,255,255,0.25)"}),
+
     # ---- water
     layer("water", "water", "fill", "water",
           paint={"fill-color": ["match", ["get", "kind"], "glacier", "#eef6fb", WATER],
@@ -97,6 +154,14 @@ LAYERS = [
                                                    12: {"river": 2, "stream": 0.7}, 16: {"river": 4, "stream": 1.6}},
                                           {7: 0.3, 10: 0.4, 12: 0.7, 16: 1.2}),
                  "line-dasharray": ["case", ["get", "intermittent"], ["literal", [3, 2]], ["literal", [1, 0]]]}),
+
+    # ---- contours: a thin line at every interval, a thicker index line every fifth
+    layer("contours-minor", "contours", "line", "contours", source="contours",
+          filter=["==", ["get", "level"], 0],
+          paint={"line-color": CONTOUR, "line-opacity": 0.55, "line-width": 0.7}),
+    layer("contours-index", "contours", "line", "contours", source="contours",
+          filter=[">", ["get", "level"], 0],
+          paint={"line-color": CONTOUR_INDEX, "line-opacity": 0.9, "line-width": 1.4}),
 
     # ---- paved roads (casing under fill)
     layer("roads-casing", "roads", "line", "roads", minzoom=10,
@@ -143,6 +208,11 @@ LAYERS = [
                   "text-max-width": 9, "text-letter-spacing": 0.05},
           paint={"text-color": ["match", ["get", "designation"], "blm", "#8a6a12", "#3d6e2f"],
                  "text-halo-color": HALO, "text-halo-width": 1.2}),
+    layer("contour-labels", "contours", "symbol", "contours", source="contour_labels",
+          filter=[">", ["get", "level"], 0],
+          layout={"symbol-placement": "line", "text-field": ["to-string", ["get", "ele"]], "text-font": FONT["regular"],
+                  "text-size": 10, "text-max-angle": 120, "symbol-spacing": 400},
+          paint={"text-color": CONTOUR_INDEX, "text-halo-color": HALO, "text-halo-width": 1.2}),
     layer("road-labels", "roads", "symbol", "roads", minzoom=11,
           filter=["any", ["has", "name"], ["has", "ref"]],
           layout={"symbol-placement": "line", "text-field": ["coalesce", ["get", "ref"], ["get", "name"]],
@@ -211,7 +281,7 @@ LAYERS = [
 ]
 
 
-def build_style(origin: str) -> dict:
+def build_style(origin: str, terrain_max_zoom: int) -> dict:
     """The style, with every address made absolute from origin, for example http://127.0.0.1:8000.
 
     MapLibre needs absolute addresses: it fetches tiles from background workers that have no
@@ -220,13 +290,32 @@ def build_style(origin: str) -> dict:
     return {
         "version": 8,
         "name": "MaroonNet SAR",
+        # Notes MapLibre ignores. The web app builds its layer and trail-use checkboxes from them.
+        "metadata": {
+            "groups": [{"id": group, "label": label} for group, label in GROUPS.items()],
+            "trail_uses": [{"id": use, "label": label, "filter": use_filter} for use, (label, use_filter) in TRAIL_USES.items()],
+        },
         "font-faces": font_faces(origin),
         # OpenFreeMap's icon sheet (MIT; its icons are Maki, CC0: assets/sprites/LICENSE.md).
         # MapLibre adds .json, .png and @2x to this address; to swap sheets, change this line (D12).
         "sprite": f"{origin}/maps/sprites/ofm",
         "sources": {
             SRC: {"type": "vector", "tiles": [f"{origin}/tiles/basemap/{{z}}/{{x}}/{{y}}"],
-                  "minzoom": 0, "maxzoom": BASEMAP_MAX_ZOOM},
+                  "minzoom": 0, "maxzoom": BASEMAP_MAX_ZOOM, "attribution": OSM_CREDIT},
+            # Heights stored as colours (Terrarium encoding) in 512-pixel tiles, as Mapterhorn makes them.
+            # dem-shared:// is answered by the contour plug-in, not the network. It downloads each tile once
+            # and shares it between the hillshade and the contour lines.
+            "terrain": {"type": "raster-dem", "tiles": ["dem-shared://{z}/{x}/{y}"],
+                        "encoding": "terrarium", "tileSize": 512, "maxzoom": terrain_max_zoom,
+                        "attribution": TERRAIN_CREDIT},
+            # The contour sources carry the terrain credit too: MapLibre shows a source's credit only
+            # while a visible layer uses it, and contours can be shown with the hillshade hidden.
+            "contours": {"type": "vector", "tiles": [CONTOUR_URL], "maxzoom": CONTOUR_MAX_ZOOM,
+                         "attribution": TERRAIN_CREDIT},
+            # A copy of the contour lines traced one zoom coarser (overzoom=1), used only to place labels.
+            # Text cannot follow the full-detail lines' sharp bends, so most labels would be dropped.
+            "contour_labels": {"type": "vector", "tiles": [CONTOUR_URL + "&overzoom=1"],
+                               "maxzoom": CONTOUR_MAX_ZOOM, "attribution": TERRAIN_CREDIT},
         },
         "layers": LAYERS,
     }
