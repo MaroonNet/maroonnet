@@ -1,4 +1,4 @@
-"""missiondb tables, from "Mission Database (missiondb): Third Normal Form" v1.1.
+"""missiondb tables, from "Mission Database (missiondb): Third Normal Form" v1.2.
 
 One SQLite file per mission day; the mission table holds one row. Table and column names
 match the 3NF document so the document and the code can be read side by side.
@@ -26,6 +26,7 @@ from sqlalchemy import (
     Column,
     ForeignKey,
     Index,
+    Integer,
     MetaData,
     Text,
     false,
@@ -86,6 +87,20 @@ def _utc_text(col: str) -> CheckConstraint:
     ).ddl_if(dialect="sqlite")
 
 
+def _max_bytes(col: str, limit: int) -> tuple[CheckConstraint, CheckConstraint]:
+    """`col` is at most `limit` bytes of UTF-8: the limit a Meshtastic packet field has.
+    SQLite counts characters in length(); casting to BLOB counts bytes. PostgreSQL has
+    octet_length(). One constraint per dialect, same name, so Alembic sees one rule."""
+    return (
+        CheckConstraint(
+            f"{col} IS NULL OR length(CAST({col} AS BLOB)) <= {limit}", name=f"{col}_bytes"
+        ).ddl_if(dialect="sqlite"),
+        CheckConstraint(
+            f"{col} IS NULL OR octet_length({col}) <= {limit}", name=f"{col}_bytes"
+        ).ddl_if(dialect="postgresql"),
+    )
+
+
 def _utc_column(*, primary_key: bool = False, nullable: bool = False) -> Column:
     return Column(UTCDateTime, primary_key=primary_key, nullable=nullable)
 
@@ -107,9 +122,6 @@ def _enum_column(enum_cls: type[Enum], *, name: str, default: Enum | None = None
     )
 
 
-OPEN_SECTOR_STATUSES = "status IN ('drawn', 'searching')"
-
-
 # --------------------------------------------------------------------------------------------
 # Enumerations
 # --------------------------------------------------------------------------------------------
@@ -117,7 +129,7 @@ OPEN_SECTOR_STATUSES = "status IN ('drawn', 'searching')"
 
 class SectorStatus(str, Enum):
     DRAWN = "drawn"            # red on the map; may or may not have a group yet
-    SEARCHING = "searching"    # yellow: a team of the assigned group has entered
+    SEARCHING = "searching"    # a team of the assigned group has entered (application rule)
     COMPLETED = "completed"    # green: completed_time is set; the row is history from here on
 
 
@@ -132,12 +144,15 @@ class MessageDirection(str, Enum):
 
 
 class Mission(MissionBase, table=True):
-    """Exactly one row per file. mission_uuid is the same across every file of one mission
-    (one folder per mission, one file per day or start/stop), so the AAR can stitch days."""
+    """Exactly one row per file. A mission is one or more operational periods (a shift of
+    work; a day, a night, a start/stop), each its own file: same mission_uuid and name,
+    operational_period 1, 2, 3... Rows carried from one period into the next keep their
+    ids (see carryover.py), so the AAR can stitch periods by id."""
 
     __tablename__ = "mission"
     __table_args__ = (
         CheckConstraint("mission_id = 1", name="single_row"),
+        CheckConstraint("operational_period >= 1", name="operational_period"),
         _utc_text("start_time"),
         _utc_text("end_time"),
     )
@@ -148,6 +163,9 @@ class Mission(MissionBase, table=True):
         sa_column=Column(Text, unique=True, nullable=False),
     )
     name: str = Field(sa_column=Column(Text, nullable=False))
+    operational_period: int = Field(
+        default=1, sa_column=Column(Integer, nullable=False, server_default=text("1"))
+    )
     start_time: datetime = Field(sa_column=_utc_column())
     end_time: datetime | None = Field(default=None, sa_column=_utc_column(nullable=True))
 
@@ -188,7 +206,7 @@ class SearchGroup(MissionBase, table=True):
     search_group_id: int | None = Field(default=None, primary_key=True)
 
     team_assignments: list["TeamGroupAssignment"] = Relationship(back_populates="search_group")
-    search_sectors: list["SearchSector"] = Relationship(back_populates="search_group")
+    sector_assignments: list["SectorAssignment"] = Relationship(back_populates="search_group")
 
 
 class Team(MissionBase, table=True):
@@ -217,6 +235,8 @@ class Team(MissionBase, table=True):
     locations: list["Location"] = Relationship(back_populates="team")
     messages: list["Message"] = Relationship(back_populates="team")
     sector_entries: list["SectorEntry"] = Relationship(back_populates="team")
+    dispatches: list["SectorDispatch"] = Relationship(back_populates="team")
+    waypoints: list["Waypoint"] = Relationship(back_populates="team")
 
 
 class Searcher(MissionBase, table=True):
@@ -296,52 +316,106 @@ class SearcherTeamAssignment(MissionBase, table=True):
 class SearchSector(MissionBase, table=True):
     """A commander-drawn polygon. Drawn freely, assigned to a group later or never.
 
-    A group holds at most one open (drawn or searching) sector at a time: the partial unique
-    index rejects a second one. Reassigning a group = complete its current sector and assign
-    the next, in one transaction. A completed sector keeps its group for the AAR.
+    Which group holds it, and when, is sector_assignment (history, like the other assignment
+    tables). A group holds at most one sector and a sector at most one group at a time; both
+    are partial unique indexes on sector_assignment. Reassigning = close the open assignment
+    and open the next, in one transaction. Carried into the next operational period, a sector
+    keeps its id, name, points and status but arrives with no open assignment.
+
+    On the mesh (Assignment Packet record v1.3) a sector is one port-256 packet carrying an
+    assignment ID (0-65,535), a name of at most 20 UTF-8 bytes and 3-24 corners. The
+    search_sector_id IS the assignment ID; the same ID sent again is a re-send, never new
+    geometry (a sent sector is completed and replaced, not edited). Who it was sent to, and
+    when, is sector_dispatch.
     """
 
     __tablename__ = "search_sector"
     __table_args__ = (
+        CheckConstraint("search_sector_id BETWEEN 0 AND 65535", name="wire_id"),
+        *_max_bytes("name", 20),
         CheckConstraint(
             "(status = 'completed') = (completed_time IS NOT NULL)", name="completed_time"
         ),
-        CheckConstraint(
-            "status = 'drawn' OR search_group_id IS NOT NULL", name="searching_needs_group"
-        ),
         _utc_text("created_time"),
         _utc_text("completed_time"),
+        # Names are unique within a file (the command post auto-names S<id>); the empty
+        # name is allowed on more than one unsaved row.
         Index(
-            "ux_search_sector_open_per_group",
-            "search_group_id",
+            "ux_search_sector_name",
+            "name",
             unique=True,
-            sqlite_where=text(OPEN_SECTOR_STATUSES),
-            postgresql_where=text(OPEN_SECTOR_STATUSES),
+            sqlite_where=text("name <> ''"),
+            postgresql_where=text("name <> ''"),
         ),
     )
 
     search_sector_id: int | None = Field(default=None, primary_key=True)
-    search_group_id: int | None = Field(default=None, foreign_key="search_group.search_group_id")
+    name: str = Field(default="", sa_column=Column(Text, nullable=False, server_default=text("''")))
     status: SectorStatus = Field(
         default=SectorStatus.DRAWN,
         sa_column=_enum_column(SectorStatus, name="status", default=SectorStatus.DRAWN),
     )
     created_time: datetime = Field(sa_column=_utc_column())
     completed_time: datetime | None = Field(default=None, sa_column=_utc_column(nullable=True))
+    note: str | None = Field(default=None, sa_column=Column(Text, nullable=True))  # local only
 
-    search_group: SearchGroup | None = Relationship(back_populates="search_sectors")
+    assignments: list["SectorAssignment"] = Relationship(back_populates="search_sector")
     points: list["SearchSectorPoint"] = Relationship(back_populates="search_sector")
     entries: list["SectorEntry"] = Relationship(back_populates="search_sector")
+    dispatches: list["SectorDispatch"] = Relationship(back_populates="search_sector")
+
+
+class SectorAssignment(MissionBase, table=True):
+    """Which group holds which sector, and when. to_time NULL = current.
+
+    One open assignment per sector and one per group (a group cannot be in two places).
+    Completing a sector closes its assignment in the same transaction. Not carried between
+    operational periods: the next period's commander assigns afresh.
+    """
+
+    __tablename__ = "sector_assignment"
+    __table_args__ = (
+        CheckConstraint("to_time IS NULL OR to_time >= from_time", name="ordered"),
+        _utc_text("from_time"),
+        _utc_text("to_time"),
+        Index(
+            "ux_sector_assignment_open_sector",
+            "search_sector_id",
+            unique=True,
+            sqlite_where=text("to_time IS NULL"),
+            postgresql_where=text("to_time IS NULL"),
+        ),
+        Index(
+            "ux_sector_assignment_open_group",
+            "search_group_id",
+            unique=True,
+            sqlite_where=text("to_time IS NULL"),
+            postgresql_where=text("to_time IS NULL"),
+        ),
+        Index("ix_sector_assignment_search_group_id", "search_group_id"),
+    )
+
+    assignment_id: int | None = Field(default=None, primary_key=True)
+    search_sector_id: int = Field(foreign_key="search_sector.search_sector_id", nullable=False)
+    search_group_id: int = Field(foreign_key="search_group.search_group_id", nullable=False)
+    from_time: datetime = Field(sa_column=_utc_column())
+    to_time: datetime | None = Field(default=None, sa_column=_utc_column(nullable=True))
+
+    search_sector: SearchSector = Relationship(back_populates="assignments")
+    search_group: SearchGroup = Relationship(back_populates="sector_assignments")
 
 
 class SearchSectorPoint(MissionBase, table=True):
-    """One vertex of a sector polygon. point_order starts at 1; a sector needs at least three."""
+    """One vertex of a sector polygon. point_order starts at 1; a sector needs three to
+    twenty-four (the 24 is the packet limit and stays in application code). A (0,0) corner
+    makes the phone drop the whole packet, so the database refuses it too."""
 
     __tablename__ = "search_sector_point"
     __table_args__ = (
         CheckConstraint("point_order >= 1", name="point_order"),
         _lat("lat"),
         _lon("lon"),
+        _no_fix("lat", "lon"),
     )
 
     search_sector_id: int = Field(foreign_key="search_sector.search_sector_id", primary_key=True)
@@ -365,6 +439,33 @@ class SectorEntry(MissionBase, table=True):
 
     team: Team = Relationship(back_populates="sector_entries")
     search_sector: SearchSector = Relationship(back_populates="entries")
+
+
+class SectorDispatch(MissionBase, table=True):
+    """One send of a sector to one radio, as the command post does it: one direct packet per
+    radio in the group, acknowledgement requested. A re-send is a new row with the same
+    search_sector_id. ack_time stays NULL until the radio acknowledges."""
+
+    __tablename__ = "sector_dispatch"
+    __table_args__ = (
+        CheckConstraint("ack_time IS NULL OR ack_time >= sent_time", name="ack_after_sent"),
+        _utc_text("sent_time"),
+        _utc_text("ack_time"),
+        Index("ix_sector_dispatch_search_sector_id", "search_sector_id"),
+        Index("ix_sector_dispatch_team_id", "team_id"),
+    )
+
+    dispatch_id: int | None = Field(default=None, primary_key=True)
+    search_sector_id: int = Field(foreign_key="search_sector.search_sector_id", nullable=False)
+    team_id: int = Field(foreign_key="team.team_id", nullable=False)
+    sent_time: datetime = Field(sa_column=_utc_column())
+    ack_time: datetime | None = Field(default=None, sa_column=_utc_column(nullable=True))
+    packet_id: int | None = Field(
+        default=None, sa_column=Column(BigInteger, nullable=True)
+    )  # Meshtastic packet id (unsigned 32-bit) when the sender reports one
+
+    search_sector: SearchSector = Relationship(back_populates="dispatches")
+    team: Team = Relationship(back_populates="dispatches")
 
 
 class Location(MissionBase, table=True):
@@ -412,6 +513,7 @@ class MessageType(MissionBase, table=True):
 # The starting list from the 3NF document. init_db() and the first migration insert these.
 DEFAULT_MESSAGE_TYPES: tuple[tuple[str, str], ...] = (
     ("evidence", "Searcher reports a found item"),
+    ("found", "Missing person located"),
     ("instruction", "Commander sends an order to a team"),
     ("out_of_sector", "Team has left its sector"),
     ("assignment", "Sector assigned to a group"),
@@ -446,3 +548,77 @@ class Message(MissionBase, table=True):
     text: str = Field(sa_column=Column(Text, nullable=False))
 
     team: Team = Relationship(back_populates="messages")
+
+
+class WaypointType(MissionBase, table=True):
+    """Lookup table: the kinds of point a commander wants to see on the map. Add a row to
+    add a kind."""
+
+    __tablename__ = "waypoint_type"
+
+    type_code: str = Field(sa_column=Column(Text, primary_key=True))
+    description: str = Field(sa_column=Column(Text, nullable=False))
+
+
+DEFAULT_WAYPOINT_TYPES: tuple[tuple[str, str], ...] = (
+    ("find", "Missing person located"),
+    ("evidence", "Evidence or clue found"),
+    ("landing_zone", "Helicopter landing zone"),
+    ("hazard", "Hazard to searchers (ice, avalanche, rubble)"),
+    ("command_post", "Command post"),
+    ("relay", "Stationary relay radio"),
+    ("last_known_position", "Subject's last known position"),
+    ("meeting_point", "Rendezvous for searchers"),
+)
+
+
+class Waypoint(MissionBase, table=True):
+    """A point on the map that is not a radio position: a find, evidence, a landing zone,
+    the command post. The commander's "VIP location data", kept apart from message noise.
+
+    Where it comes from: placed by the commander (team_id and message_id NULL), or derived
+    from a tagged message (message_id set, team_id = the radio that sent it, lat/lon from
+    that radio's location at message.time). name, description, icon and expire_time are
+    Meshtastic's own waypoint fields (port 8), so a row can be sent over the mesh as-is
+    if the team ever decides to; note is local only.
+
+    A moved or corrected waypoint is closed (removed_time) and re-added, like assignments,
+    so the AAR can replay it appearing, moving and disappearing.
+    """
+
+    __tablename__ = "waypoint"
+    __table_args__ = (
+        _lat("lat"),
+        _lon("lon"),
+        _no_fix("lat", "lon"),
+        *_max_bytes("name", 30),
+        *_max_bytes("description", 100),
+        CheckConstraint("removed_time IS NULL OR removed_time >= created_time", name="removed_after_created"),
+        CheckConstraint("expire_time IS NULL OR expire_time >= created_time", name="expire_after_created"),
+        _utc_text("time"),
+        _utc_text("created_time"),
+        _utc_text("expire_time"),
+        _utc_text("removed_time"),
+        Index("ix_waypoint_time", "time"),
+    )
+
+    waypoint_id: int | None = Field(default=None, primary_key=True)
+    type_code: str = Field(
+        sa_column=Column(Text, ForeignKey("waypoint_type.type_code"), nullable=False)
+    )
+    lat: float
+    lon: float
+    elevation: float | None = None
+    time: datetime = Field(sa_column=_utc_column())  # when the thing happened or was seen
+    created_time: datetime = Field(sa_column=_utc_column())  # when the row was saved
+    team_id: int | None = Field(default=None, foreign_key="team.team_id")
+    message_id: int | None = Field(default=None, foreign_key="message.message_id")
+    name: str = Field(default="", sa_column=Column(Text, nullable=False, server_default=text("''")))
+    description: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
+    icon: str | None = Field(default=None, sa_column=Column(Text, nullable=True))  # emoji
+    note: str | None = Field(default=None, sa_column=Column(Text, nullable=True))  # local only
+    expire_time: datetime | None = Field(default=None, sa_column=_utc_column(nullable=True))
+    removed_time: datetime | None = Field(default=None, sa_column=_utc_column(nullable=True))
+
+    team: Team | None = Relationship(back_populates="waypoints")
+    message: Message | None = Relationship()

@@ -126,13 +126,20 @@ def init_db(engine: Engine | None = None) -> None:
     (target_metadata = MissionBase.metadata) so that an existing mission file can be upgraded
     in place.
     """
-    from .models import DEFAULT_MESSAGE_TYPES, MessageType, MissionBase
+    from .models import (
+        DEFAULT_MESSAGE_TYPES,
+        DEFAULT_WAYPOINT_TYPES,
+        MessageType,
+        MissionBase,
+        WaypointType,
+    )
 
     engine = engine or get_engine()
     MissionBase.metadata.create_all(engine)
     with Session(engine) as session:
-        existing = set(session.exec(select(MessageType.type_code)).all())
-        for code, description in DEFAULT_MESSAGE_TYPES:
-            if code not in existing:
-                session.add(MessageType(type_code=code, description=description))
+        for model, defaults in ((MessageType, DEFAULT_MESSAGE_TYPES), (WaypointType, DEFAULT_WAYPOINT_TYPES)):
+            existing = set(session.exec(select(model.type_code)).all())
+            for code, description in defaults:
+                if code not in existing:
+                    session.add(model(type_code=code, description=description))
         session.commit()
