@@ -1,0 +1,577 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>missiondb Explorer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one full-height canvas of draggable table cards; toolbar on top; details drawer on the right (bottom sheet on phones). */
+:root{
+  --bg:#e9ecef; --grid:#c9cfd6; --card:#ffffff; --head:#f4f6f8; --fg:#15191e; --muted:#58616c;
+  --line:#d4d9df; --edge:#7b8590; --accent:#8c1d2c; --accent-soft:#f6e6e8; --on-accent:#ffffff; --hi:#fff3c4;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --shadow:0 1px 2px rgba(21,25,30,.08),0 4px 12px rgba(21,25,30,.06);
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#101316; --grid:#262c33; --card:#1a1f24; --head:#21272d; --fg:#e8ecf0; --muted:#9aa4ae;
+  --line:#2f363e; --edge:#7d8893; --accent:#e5808e; --accent-soft:#3a2026; --on-accent:#1a0d10; --hi:#4a3f12;
+  --shadow:0 1px 2px rgba(0,0,0,.5),0 4px 12px rgba(0,0,0,.3); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#101316; --grid:#262c33; --card:#1a1f24; --head:#21272d; --fg:#e8ecf0; --muted:#9aa4ae;
+  --line:#2f363e; --edge:#7d8893; --accent:#e5808e; --accent-soft:#3a2026; --on-accent:#1a0d10; --hi:#4a3f12;
+  --shadow:0 1px 2px rgba(0,0,0,.5),0 4px 12px rgba(0,0,0,.3); color-scheme:dark}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:14px;line-height:1.4;overflow:hidden}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.app{height:100%;display:flex;flex-direction:column}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));background:var(--card);border-bottom:1px solid var(--line);position:relative;z-index:5}
+.bar h1{margin:0 8px 0 0;font-family:var(--mono);font-size:15px;font-weight:600;letter-spacing:.01em}
+.src{font-size:12px;color:var(--muted);min-width:0;flex:1 1 220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.src b{color:var(--fg);font-weight:600}
+.btn{height:32px;padding:0 12px;border:1px solid var(--line);border-radius:6px;background:var(--card);cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--edge)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:500}
+.btn.icon{width:32px;padding:0;font-family:var(--mono);font-weight:600}
+.grp{display:flex;gap:4px}
+.main{flex:1;display:flex;min-height:0;position:relative}
+.canvas{flex:1;position:relative;overflow:hidden;cursor:grab;touch-action:none;
+  background-color:var(--bg);background-image:radial-gradient(var(--grid) 1px,transparent 1.2px)}
+.canvas.panning{cursor:grabbing}
+.canvas.drop{box-shadow:inset 0 0 0 3px var(--accent)}
+.world{position:absolute;left:0;top:0;transform-origin:0 0}
+svg.edges{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+.edge{fill:none;stroke:var(--edge);stroke-width:1.4}
+.edge.hot{stroke:var(--accent);stroke-width:2.4}
+.edges .foot{fill:none;stroke:var(--edge);stroke-width:1.4}
+.edges .foot.hot{stroke:var(--accent);stroke-width:2}
+.edges .dot{fill:var(--bg);stroke:var(--edge);stroke-width:1.4}
+.edges .dot.hot{stroke:var(--accent)}
+.hit{fill:none;stroke:transparent;stroke-width:12;pointer-events:stroke;cursor:help}
+.card{position:absolute;width:260px;background:var(--card);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);user-select:none;-webkit-user-select:none}
+.card.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent),var(--shadow)}
+.card.dragging{z-index:3;cursor:grabbing}
+.chead{display:flex;align-items:center;gap:8px;height:36px;padding:0 10px 0 12px;background:var(--head);border-bottom:1px solid var(--line);border-radius:8px 8px 0 0;cursor:move}
+.chead .nm{font-family:var(--mono);font-weight:600;font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chead .ct{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.chead .ct.has{color:var(--accent);font-weight:600}
+.col{display:flex;align-items:center;gap:6px;height:24px;padding:0 10px 0 12px;font-family:var(--mono);font-size:12px;cursor:pointer}
+.col:last-child{border-radius:0 0 8px 8px}
+.col:hover,.col.hot{background:var(--hi)}
+.col .cn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.col .ty{color:var(--muted);font-size:11px;white-space:nowrap}
+.col .ty i{font-style:normal;opacity:.75}
+.k{display:inline-block;min-width:20px;text-align:center;font-family:var(--sans);font-size:9.5px;font-weight:600;letter-spacing:.04em;line-height:14px;border-radius:3px;padding:0 3px}
+.k.pk{background:var(--accent);color:var(--on-accent)}
+.k.fk{border:1px solid var(--edge);color:var(--fg)}
+.col .gap{display:inline-block;width:20px}
+.legend{position:absolute;left:max(12px,env(safe-area-inset-left,0px));bottom:12px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:11.5px;color:var(--muted);display:flex;flex-direction:column;gap:4px;z-index:2}
+.legend div{display:flex;align-items:center;gap:8px}
+.legend svg{flex:none}
+.legend .t{font-weight:600;color:var(--fg);text-transform:uppercase;letter-spacing:.06em;font-size:10.5px}
+.zoomlbl{position:absolute;right:12px;bottom:12px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;z-index:2;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:2px 6px}
+.tip{position:absolute;pointer-events:none;background:var(--fg);color:var(--bg);font-family:var(--mono);font-size:11.5px;padding:4px 8px;border-radius:4px;z-index:9;white-space:nowrap}
+/* drawer */
+.drawer{width:400px;max-width:100%;flex:none;background:var(--card);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.drawer[hidden]{display:none!important}
+.dh{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.dh h2{margin:0;font-family:var(--mono);font-size:16px;font-weight:600;flex:1;min-width:0;overflow-wrap:anywhere}
+.db{overflow:auto;padding:0 16px 24px;min-height:0}
+.db h3{margin:18px 0 8px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:6px}
+table{border-collapse:collapse;width:100%;font-size:12px}
+th{text-align:left;font-weight:600;font-size:11px;color:var(--muted);background:var(--head);padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap;position:sticky;top:0}
+td{padding:5px 8px;border-bottom:1px solid var(--line);font-family:var(--mono);white-space:nowrap;vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.wrap{white-space:normal;font-family:var(--sans)}
+td .nul{color:var(--muted);font-style:italic}
+tr.flash td{background:var(--hi)}
+a.lk{color:var(--accent);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+ul.rel{list-style:none;margin:0;padding:0;font-family:var(--mono);font-size:12px;display:flex;flex-direction:column;gap:4px}
+pre{margin:0;padding:10px;background:var(--head);border:1px solid var(--line);border-radius:6px;font-family:var(--mono);font-size:11.5px;line-height:1.5;overflow-x:auto;white-space:pre}
+.empty{padding:12px;background:var(--head);border-radius:6px;color:var(--muted);font-size:12.5px}
+.note{font-size:12px;color:var(--muted);margin:6px 0 0}
+.err{color:#b3261e}
+:root[data-theme="dark"] .err{color:#f2766b}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .err{color:#f2766b}}
+input.flt{height:30px;width:100%;border:1px solid var(--line);border-radius:6px;background:var(--card);padding:0 8px;margin-bottom:8px}
+@media (max-width:760px){
+  .main{flex-direction:column}
+  .drawer{width:100%;height:52%;border-left:0;border-top:1px solid var(--line)}
+  .legend{display:none}
+  .src{flex-basis:100%;order:9}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="app">
+  <div class="bar">
+    <h1>missiondb</h1>
+    <span class="src" id="src"></span>
+    <button class="btn primary" id="open">Open .sqlite3</button>
+    <button class="btn" id="example">Example data</button>
+    <button class="btn" id="reset" title="Discard dragged positions">Reset layout</button>
+    <div class="grp">
+      <button class="btn icon" id="zout" aria-label="Zoom out">-</button>
+      <button class="btn" id="fit">Fit</button>
+      <button class="btn icon" id="zin" aria-label="Zoom in">+</button>
+    </div>
+    <input type="file" id="file" accept=".sqlite3,.sqlite,.db,.json" hidden>
+  </div>
+  <div class="main">
+    <div class="canvas" id="canvas" aria-label="Table diagram. Drag tables by their header; drag the background to pan; scroll to zoom.">
+      <div class="world" id="world"><svg class="edges" id="edges" width="1" height="1"></svg></div>
+      <div class="legend" aria-hidden="true">
+        <span class="t">Notation</span>
+        <div><span class="k pk">PK</span> primary key</div>
+        <div><span class="k fk">FK</span> foreign key</div>
+        <div><svg width="44" height="14"><line x1="0" y1="7" x2="44" y2="7" class="edge" style="stroke:var(--edge)"/><path d="M44,1 L32,7 L44,13" class="foot" style="fill:none;stroke:var(--edge)"/></svg> many rows (FK side)</div>
+        <div><svg width="44" height="14"><line x1="0" y1="7" x2="44" y2="7" style="stroke:var(--edge)"/><path d="M36,1 V13 M40,1 V13" style="stroke:var(--edge)"/></svg> exactly one (FK not null)</div>
+        <div><svg width="44" height="14"><line x1="0" y1="7" x2="34" y2="7" style="stroke:var(--edge)"/><circle cx="38" cy="7" r="3.5" style="fill:var(--card);stroke:var(--edge)"/><path d="M30,1 V13" style="stroke:var(--edge)"/></svg> zero or one (FK nullable)</div>
+      </div>
+      <div class="zoomlbl" id="zlbl">100%</div>
+      <div class="tip" id="tip" hidden></div>
+    </div>
+    <aside class="drawer" id="drawer" hidden>
+      <div class="dh"><h2 id="dname"></h2><button class="btn icon" id="dclose" aria-label="Close details">x</button></div>
+      <div class="db" id="dbody"></div>
+    </aside>
+  </div>
+</div>
+
+<script src="sql-asm.js"></script>
+<script>
+(function(){
+'use strict';
+// Schema of an empty missiondb file (backend/missiondb, migration 0001), read with the same PRAGMAs used for opened files.
+var BASE = [{"name":"location","sql":"CREATE TABLE location (\n\tteam_id INTEGER NOT NULL, \n\ttime DATETIME NOT NULL, \n\trx_time DATETIME NOT NULL, \n\tlat FLOAT NOT NULL, \n\tlon FLOAT NOT NULL, \n\televation FLOAT, \n\tCONSTRAINT pk_location PRIMARY KEY (team_id, time), \n\tCONSTRAINT ck_location_lat_range CHECK (lat BETWEEN -90 AND 90), \n\tCONSTRAINT ck_location_lon_range CHECK (lon BETWEEN -180 AND 180), \n\tCONSTRAINT ck_location_no_fix CHECK (NOT (lat = 0 AND lon = 0)), \n\tCONSTRAINT ck_location_time_utc_text CHECK (time IS NULL OR time GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z'), \n\tCONSTRAINT ck_location_rx_time_utc_text CHECK (rx_time IS NULL OR rx_time GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z'), \n\tCONSTRAINT fk_location_team_id_team FOREIGN KEY(team_id) REFERENCES team (team_id)\n)\n WITHOUT ROWID\n\n","columns":[{"name":"team_id","type":"INTEGER","notnull":1,"dflt":null,"pk":1},{"name":"time","type":"DATETIME","notnull":1,"dflt":null,"pk":2},{"name":"rx_time","type":"DATETIME","notnull":1,"dflt":null,"pk":0},{"name":"lat","type":"FLOAT","notnull":1,"dflt":null,"pk":0},{"name":"lon","type":"FLOAT","notnull":1,"dflt":null,"pk":0},{"name":"elevation","type":"FLOAT","notnull":0,"dflt":null,"pk":0}],"fks":[{"from":"team_id","table":"team","to":"team_id"}],"indexes":[{"name":"ix_location_time","unique":0,"origin":"c","partial":0,"cols":["time"],"sql":"CREATE INDEX ix_location_time ON location (time)"},{"name":"sqlite_autoindex_location_1","unique":1,"origin":"pk","partial":0,"cols":["team_id","time"],"sql":null}],"count":0},{"name":"message","sql":"CREATE TABLE message (\n\tmessage_id INTEGER NOT NULL, \n\tteam_id INTEGER NOT NULL, \n\ttime DATETIME NOT NULL, \n\trx_time DATETIME NOT NULL, \n\tdirection VARCHAR(16) NOT NULL, \n\ttype_code TEXT NOT NULL, \n\ttext TEXT NOT NULL, \n\tCONSTRAINT pk_message PRIMARY KEY (message_id), \n\tCONSTRAINT ck_message_time_utc_text CHECK (time IS NULL OR time GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z'), \n\tCONSTRAINT ck_message_rx_time_utc_text CHECK (rx_time IS NULL OR rx_time GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z'), \n\tCONSTRAINT fk_message_team_id_team FOREIGN KEY(team_id) REFERENCES team (team_id), \n\tCONSTRAINT ck_message_direction CHECK (direction IN ('in', 'out')), \n\tCONSTRAINT fk_message_type_code_message_type FOREIGN KEY(type_code) REFERENCES message_type (type_code)\n)","columns":[{"name":"message_id","type":"INTEGER","notnull":1,"dflt":null,"pk":1},{"name":"team_id","type":"INTEGER","notnull":1,"dflt":null,"pk":0},{"name":"time","type":"DATETIME","notnull":1,"dflt":null,"pk":0},{"name":"rx_time","type":"DATETIME","notnull":1,"dflt":null,"pk":0},{"name":"direction","type":"VARCHAR(16)","notnull":1,"dflt":null,"pk":0},{"name":"type_code","type":"TEXT","notnull":1,"dflt":null,"pk":0},{"name":"text","type":"TEXT","notnull":1,"dflt":null,"pk":0}],"fks":[{"from":"type_code","table":"message_type","to":"type_code"},{"from":"team_id","table":"team","to":"team_id"}],"indexes":[{"name":"ix_message_time","unique":0,"origin":"c","partial":0,"cols":["time"],"sql":"CREATE INDEX ix_message_time ON message (time)"}],"count":0},{"name":"message_type","sql":"CREATE TABLE message_type (\n\ttype_code TEXT NOT NULL, \n\tdescription TEXT NOT NULL, \n\tCONSTRAINT pk_message_type PRIMARY KEY (type_code)\n)","columns":[{"name":"type_code","type":"TEXT","notnull":1,"dflt":null,"pk":1},{"name":"description","type":"TEXT","notnull":1,"dflt":null,"pk":0}],"fks":[],"indexes":[{"name":"sqlite_autoindex_message_type_1","unique":1,"origin":"pk","partial":0,"cols":["type_code"],"sql":null}],"count":4},{"name":"mission","sql":"CREATE TABLE mission (\n\tmission_id INTEGER NOT NULL, \n\tmission_uuid TEXT NOT NULL, \n\tname TEXT NOT NULL, \n\tstart_time DATETIME NOT NULL, \n\tend_time DATETIME, \n\tCONSTRAINT pk_mission PRIMARY KEY (mission_id), \n\tCONSTRAINT ck_mission_single_row CHECK (mission_id = 1), \n\tCONSTRAINT ck_mission_start_time_utc_text CHECK (start_time IS NULL OR start_time GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z'), \n\tCONSTRAINT ck_mission_end_time_utc_text CHECK (end_time IS NULL OR end_time GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z'), \n\tCONSTRAINT uq_mission_mission_uuid UNIQUE (mission_uuid)\n)","columns":[{"name":"mission_id","type":"INTEGER","notnull":1,"dflt":null,"pk":1},{"name":"mission_uuid","type":"TEXT","notnull":1,"dflt":null,"pk":0},{"name":"name","type":"TEXT","notnull":1,"dflt":null,"pk":0},{"name":"start_time","type":"DATETIME","notnull":1,"dflt":null,"pk":0},{"name":"end_time","type":"DATETIME","notnull":0,"dflt":null,"pk":0}],"fks":[],"indexes":[{"name":"sqlite_autoindex_mission_1","unique":1,"origin":"u","partial":0,"cols":["mission_uuid"],"sql":null}],"count":0},{"name":"search_area","sql":"CREATE TABLE search_area (\n\tsearch_area_id INTEGER NOT NULL, \n\tmission_id INTEGER NOT NULL, \n\tmin_lat FLOAT NOT NULL, \n\tmin_lon FLOAT NOT NULL, \n\tmax_lat FLOAT NOT NULL, \n\tmax_lon FLOAT NOT NULL, \n\tCONSTRAINT pk_search_area PRIMARY KEY (search_area_id), \n\tCONSTRAINT ck_search_area_min_lat_range CHECK (min_lat BETWEEN -90 AND 90), \n\tCONSTRAINT ck_search_area_min_lon_range CHECK (min_lon BETWEEN -180 AND 180), \n\tCONSTRAINT ck_search_area_max_lat_range CHECK (max_lat BETWEEN -90 AND 90), \n\tCONSTRAINT ck_search_area_max_lon_range CHECK (max_lon BETWEEN -180 AND 180), \n\tCONSTRAINT ck_search_area_corners CHECK (min_lat < max_lat AND min_lon < max_lon), \n\tCONSTRAINT fk_search_area_mission_id_mission FOREIGN KEY(mission_id) REFERENCES mission (mission_id)\n)","columns":[{"name":"search_area_id","type":"INTEGER","notnull":1,"dflt":null,"pk":1},{"name":"mission_id","type":"INTEGER","notnull":1,"dflt":null,"pk":0},{"name":"min_lat","type":"FLOAT","notnull":1,"dflt":null,"pk":0},{"name":"min_lon","type":"FLOAT","notnull":1,"dflt":null,"pk":0},{"name":"max_lat","type":"FLOAT","notnull":1,"dflt":null,"pk":0},{"name":"max_lon","type":"FLOAT","notnull":1,"dflt":null,"pk":0}],"fks":[{"from":"mission_id","table":"mission","to":"mission_id"}],"indexes":[],"count":0},{"name":"search_group","sql":"CREATE TABLE search_group (\n\tsearch_group_id INTEGER NOT NULL, \n\tCONSTRAINT pk_search_group PRIMARY KEY (search_group_id)\n)","columns":[{"name":"search_group_id","type":"INTEGER","notnull":1,"dflt":null,"pk":1}],"fks":[],"indexes":[],"count":0},{"name":"search_sector","sql":"CREATE TABLE search_sector (\n\tsearch_sector_id INTEGER NOT NULL, \n\tsearch_group_id INTEGER, \n\tstatus VARCHAR(16) DEFAULT 'drawn' NOT NULL, \n\tcreated_time DATETIME NOT NULL, \n\tcompleted_time DATETIME, \n\tCONSTRAINT pk_search_sector PRIMARY KEY (search_sector_id), \n\tCONSTRAINT ck_search_sector_completed_time CHECK ((status = 'completed') = (completed_time IS NOT NULL)), \n\tCONSTRAINT ck_search_sector_searching_needs_group CHECK (status = 'drawn' OR search_group_id IS NOT NULL), \n\tCONSTRAINT ck_search_sector_created_time_utc_text CHECK (created_time IS NULL OR created_time GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z'), \n\tCONSTRAINT ck_search_sector_completed_time_utc_text CHECK (completed_time IS NULL OR completed_time GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z'), \n\tCONSTRAINT fk_search_sector_search_group_id_search_group FOREIGN KEY(search_group_id) REFERENCES search_group (search_group_id), \n\tCONSTRAINT ck_search_sector_status CHECK (status IN ('drawn', 'searching', 'completed'))\n)","columns":[{"name":"search_sector_id","type":"INTEGER","notnull":1,"dflt":null,"pk":1},{"name":"search_group_id","type":"INTEGER","notnull":0,"dflt":null,"pk":0},{"name":"status","type":"VARCHAR(16)","notnull":1,"dflt":"'drawn'","pk":0},{"name":"created_time","type":"DATETIME","notnull":1,"dflt":null,"pk":0},{"name":"completed_time","type":"DATETIME","notnull":0,"dflt":null,"pk":0}],"fks":[{"from":"search_group_id","table":"search_group","to":"search_group_id"}],"indexes":[{"name":"ux_search_sector_open_per_group","unique":1,"origin":"c","partial":1,"cols":["search_group_id"],"sql":"CREATE UNIQUE INDEX ux_search_sector_open_per_group ON search_sector (search_group_id) WHERE status IN ('drawn', 'searching')"}],"count":0},{"name":"search_sector_point","sql":"CREATE TABLE search_sector_point (\n\tsearch_sector_id INTEGER NOT NULL, \n\tpoint_order INTEGER NOT NULL, \n\tlat FLOAT NOT NULL, \n\tlon FLOAT NOT NULL, \n\tCONSTRAINT pk_search_sector_point PRIMARY KEY (search_sector_id, point_order), \n\tCONSTRAINT ck_search_sector_point_point_order CHECK (point_order >= 1), \n\tCONSTRAINT ck_search_sector_point_lat_range CHECK (lat BETWEEN -90 AND 90), \n\tCONSTRAINT ck_search_sector_point_lon_range CHECK (lon BETWEEN -180 AND 180), \n\tCONSTRAINT fk_search_sector_point_search_sector_id_search_sector FOREIGN KEY(search_sector_id) REFERENCES search_sector (search_sector_id)\n)","columns":[{"name":"search_sector_id","type":"INTEGER","notnull":1,"dflt":null,"pk":1},{"name":"point_order","type":"INTEGER","notnull":1,"dflt":null,"pk":2},{"name":"lat","type":"FLOAT","notnull":1,"dflt":null,"pk":0},{"name":"lon","type":"FLOAT","notnull":1,"dflt":null,"pk":0}],"fks":[{"from":"search_sector_id","table":"search_sector","to":"search_sector_id"}],"indexes":[{"name":"sqlite_autoindex_search_sector_point_1","unique":1,"origin":"pk","partial":0,"cols":["search_sector_id","point_order"],"sql":null}],"count":0},{"name":"searcher","sql":"CREATE TABLE searcher (\n\tsearcher_id INTEGER NOT NULL, \n\tfname TEXT NOT NULL, \n\tlname TEXT NOT NULL, \n\tCONSTRAINT pk_searcher PRIMARY KEY (searcher_id)\n)","columns":[{"name":"searcher_id","type":"INTEGER","notnull":1,"dflt":null,"pk":1},{"name":"fname","type":"TEXT","notnull":1,"dflt":null,"pk":0},{"name":"lname","type":"TEXT","notnull":1,"dflt":null,"pk":0}],"fks":[],"indexes":[],"count":0},{"name":"searcher_team_assignment","sql":"CREATE TABLE searcher_team_assignment (\n\tassignment_id INTEGER NOT NULL, \n\tsearcher_id INTEGER NOT NULL, \n\tteam_id INTEGER NOT NULL, \n\tfrom_time DATETIME NOT NULL, \n\tto_time DATETIME, \n\tCONSTRAINT pk_searcher_team_assignment PRIMARY KEY (assignment_id), \n\tCONSTRAINT ck_searcher_team_assignment_ordered CHECK (to_time IS NULL OR to_time >= from_time), \n\tCONSTRAINT ck_searcher_team_assignment_from_time_utc_text CHECK (from_time IS NULL OR from_time GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z'), \n\tCONSTRAINT ck_searcher_team_assignment_to_time_utc_text CHECK (to_time IS NULL OR to_time GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z'), \n\tCONSTRAINT fk_searcher_team_assignment_searcher_id_searcher FOREIGN KEY(searcher_id) REFERENCES searcher (searcher_id), \n\tCONSTRAINT fk_searcher_team_assignment_team_id_team FOREIGN KEY(team_id) REFERENCES team (team_id)\n)","columns":[{"name":"assignment_id","type":"INTEGER","notnull":1,"dflt":null,"pk":1},{"name":"searcher_id","type":"INTEGER","notnull":1,"dflt":null,"pk":0},{"name":"team_id","type":"INTEGER","notnull":1,"dflt":null,"pk":0},{"name":"from_time","type":"DATETIME","notnull":1,"dflt":null,"pk":0},{"name":"to_time","type":"DATETIME","notnull":0,"dflt":null,"pk":0}],"fks":[{"from":"team_id","table":"team","to":"team_id"},{"from":"searcher_id","table":"searcher","to":"searcher_id"}],"indexes":[{"name":"ux_searcher_team_assignment_open","unique":1,"origin":"c","partial":1,"cols":["searcher_id"],"sql":"CREATE UNIQUE INDEX ux_searcher_team_assignment_open ON searcher_team_assignment (searcher_id) WHERE to_time IS NULL"}],"count":0},{"name":"sector_entry","sql":"CREATE TABLE sector_entry (\n\tteam_id INTEGER NOT NULL, \n\tsearch_sector_id INTEGER NOT NULL, \n\tentered_time DATETIME NOT NULL, \n\tCONSTRAINT pk_sector_entry PRIMARY KEY (team_id, search_sector_id), \n\tCONSTRAINT ck_sector_entry_entered_time_utc_text CHECK (entered_time IS NULL OR entered_time GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z'), \n\tCONSTRAINT fk_sector_entry_team_id_team FOREIGN KEY(team_id) REFERENCES team (team_id), \n\tCONSTRAINT fk_sector_entry_search_sector_id_search_sector FOREIGN KEY(search_sector_id) REFERENCES search_sector (search_sector_id)\n)","columns":[{"name":"team_id","type":"INTEGER","notnull":1,"dflt":null,"pk":1},{"name":"search_sector_id","type":"INTEGER","notnull":1,"dflt":null,"pk":2},{"name":"entered_time","type":"DATETIME","notnull":1,"dflt":null,"pk":0}],"fks":[{"from":"search_sector_id","table":"search_sector","to":"search_sector_id"},{"from":"team_id","table":"team","to":"team_id"}],"indexes":[{"name":"sqlite_autoindex_sector_entry_1","unique":1,"origin":"pk","partial":0,"cols":["team_id","search_sector_id"],"sql":null}],"count":0},{"name":"team","sql":"CREATE TABLE team (\n\tteam_id INTEGER NOT NULL, \n\tnode_num BIGINT NOT NULL, \n\tactive BOOLEAN DEFAULT 0 NOT NULL, \n\tCONSTRAINT pk_team PRIMARY KEY (team_id), \n\tCONSTRAINT uq_team_node_num UNIQUE (node_num), \n\tCONSTRAINT ck_team_active CHECK (active IN (0, 1))\n)","columns":[{"name":"team_id","type":"INTEGER","notnull":1,"dflt":null,"pk":1},{"name":"node_num","type":"BIGINT","notnull":1,"dflt":null,"pk":0},{"name":"active","type":"BOOLEAN","notnull":1,"dflt":"0","pk":0}],"fks":[],"indexes":[{"name":"sqlite_autoindex_team_1","unique":1,"origin":"u","partial":0,"cols":["node_num"],"sql":null}],"count":0},{"name":"team_group_assignment","sql":"CREATE TABLE team_group_assignment (\n\tassignment_id INTEGER NOT NULL, \n\tteam_id INTEGER NOT NULL, \n\tsearch_group_id INTEGER NOT NULL, \n\tfrom_time DATETIME NOT NULL, \n\tto_time DATETIME, \n\tCONSTRAINT pk_team_group_assignment PRIMARY KEY (assignment_id), \n\tCONSTRAINT ck_team_group_assignment_ordered CHECK (to_time IS NULL OR to_time >= from_time), \n\tCONSTRAINT ck_team_group_assignment_from_time_utc_text CHECK (from_time IS NULL OR from_time GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z'), \n\tCONSTRAINT ck_team_group_assignment_to_time_utc_text CHECK (to_time IS NULL OR to_time GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z'), \n\tCONSTRAINT fk_team_group_assignment_team_id_team FOREIGN KEY(team_id) REFERENCES team (team_id), \n\tCONSTRAINT fk_team_group_assignment_search_group_id_search_group FOREIGN KEY(search_group_id) REFERENCES search_group (search_group_id)\n)","columns":[{"name":"assignment_id","type":"INTEGER","notnull":1,"dflt":null,"pk":1},{"name":"team_id","type":"INTEGER","notnull":1,"dflt":null,"pk":0},{"name":"search_group_id","type":"INTEGER","notnull":1,"dflt":null,"pk":0},{"name":"from_time","type":"DATETIME","notnull":1,"dflt":null,"pk":0},{"name":"to_time","type":"DATETIME","notnull":0,"dflt":null,"pk":0}],"fks":[{"from":"search_group_id","table":"search_group","to":"search_group_id"},{"from":"team_id","table":"team","to":"team_id"}],"indexes":[{"name":"ux_team_group_assignment_open","unique":1,"origin":"c","partial":1,"cols":["team_id"],"sql":"CREATE UNIQUE INDEX ux_team_group_assignment_open ON team_group_assignment (team_id) WHERE to_time IS NULL"}],"count":0}];
+var BASE_ROWS = {"message_type": [{"type_code": "evidence", "description": "Searcher reports a found item"}, {"type_code": "instruction", "description": "Commander sends an order to a team"}, {"type_code": "out_of_sector", "description": "Team has left its sector"}, {"type_code": "assignment", "description": "Sector assigned to a group"}]};
+
+var LAYOUT = {
+  mission:[0,0], search_area:[0,1], message_type:[0,2],
+  searcher:[1,0], message:[1,1],
+  searcher_team_assignment:[2,0], team:[2,1], location:[2,2],
+  team_group_assignment:[3,0], sector_entry:[3,1],
+  search_group:[4,0], search_sector:[4,1], search_sector_point:[4,2]
+};
+var START_Y = {3:90};
+var CARD_W = 260, HEAD_H = 37, ROW_H = 24, COL_PITCH = 320, GAP = 44;
+var KEY = 'missiondb-explorer-layout-v1';
+
+var tables = [], byName = {}, data = {}, source = null, pos = {}, view = {x:0,y:0,k:1}, sel = null, hot = null, flash = null;
+var $ = function(id){ return document.getElementById(id); };
+var canvas = $('canvas'), world = $('world'), svg = $('edges');
+function esc(v){ return String(v).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function n(x){ return Number(x).toLocaleString('en-US'); }
+function loadSaved(){ try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { return {}; } }
+function save(){ try { localStorage.setItem(KEY, JSON.stringify(pos)); } catch (e) {} }
+
+// ------------------------------------------------------------------ layout
+function cardH(t){ return HEAD_H + t.columns.length * ROW_H + 1; }
+function autoLayout(){
+  var colY = {}, p = {}, extra = 0;
+  var order = tables.slice().sort(function(a, b){
+    var la = LAYOUT[a.name], lb = LAYOUT[b.name];
+    if (la && lb) return la[0] - lb[0] || la[1] - lb[1];
+    return la ? -1 : lb ? 1 : a.name < b.name ? -1 : 1;
+  });
+  order.forEach(function(t){
+    var c = LAYOUT[t.name] ? LAYOUT[t.name][0] : 5 + Math.floor(extra++ / 4);
+    if (colY[c] === undefined) colY[c] = 40 + (START_Y[c] || 0);
+    p[t.name] = {x: 40 + c * COL_PITCH, y: colY[c]};
+    colY[c] += cardH(t) + GAP;
+  });
+  return p;
+}
+function setTables(list){
+  tables = list; byName = {};
+  tables.forEach(function(t){ byName[t.name] = t; });
+  var auto = autoLayout(), saved = loadSaved();
+  pos = {};
+  tables.forEach(function(t){ pos[t.name] = saved[t.name] || auto[t.name]; });
+  if (sel && !byName[sel]) sel = null;
+}
+
+// ------------------------------------------------------------------ cards
+function isFk(t, c){ return t.fks.some(function(f){ return f.from === c; }); }
+function renderCards(){
+  [].forEach.call(world.querySelectorAll('.card'), function(el){ el.remove(); });
+  tables.forEach(function(t){
+    var el = document.createElement('div');
+    el.className = 'card' + (t.name === sel ? ' sel' : '');
+    el.dataset.t = t.name;
+    el.style.left = pos[t.name].x + 'px'; el.style.top = pos[t.name].y + 'px';
+    var cnt = data[t.name] ? data[t.name].rows.length : t.count;
+    var h = '<div class="chead" tabindex="0" role="button" aria-label="Table ' + esc(t.name) + '"><span class="nm">' + esc(t.name) + '</span><span class="ct' + (cnt ? ' has' : '') + '">' + n(cnt) + (cnt === 1 ? ' row' : ' rows') + '</span></div>';
+    t.columns.forEach(function(c){
+      var fk = isFk(t, c.name);
+      var keys = (c.pk ? '<span class="k pk">PK</span>' : '') + (fk ? '<span class="k fk">FK</span>' : '');
+      if (!c.pk && !fk) keys = '<span class="gap"></span>';
+      var title = c.name + ' ' + (c.type || '') + (c.notnull || c.pk ? ' NOT NULL' : ' NULL') + (c.dflt !== null && c.dflt !== undefined ? ' DEFAULT ' + c.dflt : '');
+      h += '<div class="col" data-c="' + esc(c.name) + '" title="' + esc(title) + '">' + keys + '<span class="cn">' + esc(c.name) + '</span><span class="ty">' + esc((c.type || '').toLowerCase()) + (c.notnull || c.pk ? '' : ' <i>null</i>') + '</span></div>';
+    });
+    el.innerHTML = h;
+    world.appendChild(el);
+  });
+}
+
+// ------------------------------------------------------------------ edges
+function rowY(t, col){
+  var i = byName[t].columns.findIndex(function(c){ return c.name === col; });
+  return pos[t].y + HEAD_H + (i < 0 ? 0 : i) * ROW_H + ROW_H / 2;
+}
+function allEdges(){
+  var out = [];
+  tables.forEach(function(t){
+    t.fks.forEach(function(f){
+      if (!byName[f.table]) return;
+      var to = f.to || (byName[f.table].columns.filter(function(c){ return c.pk; })[0] || {}).name;
+      var col = t.columns.filter(function(c){ return c.name === f.from; })[0] || {};
+      out.push({from:t.name, fcol:f.from, to:f.table, tcol:to, nullable: !col.notnull && !col.pk});
+    });
+  });
+  return out;
+}
+function isHot(e){
+  if (hot) {
+    if (hot.t === e.from && hot.c === e.fcol) return true;
+    if (hot.t === e.to && hot.c === e.tcol) return true;
+    return false;
+  }
+  return sel && (e.from === sel || e.to === sel);
+}
+function drawEdges(){
+  var es = allEdges(), parts = [], hits = [];
+  es.forEach(function(e, i){
+    var a = pos[e.from], b = pos[e.to];
+    var ay = rowY(e.from, e.fcol), by = rowY(e.to, e.tcol);
+    var ax, bx, ad, bd;                      // ad/bd: outward direction at each end (+1 right, -1 left)
+    var acx = a.x + CARD_W / 2, bcx = b.x + CARD_W / 2;
+    if (e.from === e.to) { ax = a.x + CARD_W; bx = ax; ad = 1; bd = 1; }
+    else if (Math.abs(acx - bcx) < CARD_W * 0.9) { ax = a.x + CARD_W; bx = b.x + CARD_W; ad = 1; bd = 1; }
+    else if (acx < bcx) { ax = a.x + CARD_W; bx = b.x; ad = 1; bd = -1; }
+    else { ax = a.x; bx = b.x + CARD_W; ad = -1; bd = 1; }
+    var hotE = isHot(e), cls = hotE ? ' hot' : '';
+    var s = 18, ax2 = ax + ad * s, bx2 = bx + bd * s;   // straight stubs leave room for the markers
+    var reach = ad === bd ? 40 + Math.abs(ay - by) * 0.15 + Math.abs(ax - bx) * 0.5 : Math.max(30, Math.abs(bx2 - ax2) / 2);
+    var d = 'M' + ax + ',' + ay + ' H' + ax2 + ' C' + (ax2 + ad * reach) + ',' + ay + ' ' + (bx2 + bd * reach) + ',' + by + ' ' + bx2 + ',' + by + ' H' + bx;
+    parts.push('<path class="edge' + cls + '" d="' + d + '"/>');
+    // many (crow's foot) at the FK end
+    parts.push('<path class="foot' + cls + '" d="M' + (ax + ad * 12) + ',' + ay + ' L' + ax + ',' + (ay - 6) + ' M' + (ax + ad * 12) + ',' + ay + ' L' + ax + ',' + (ay + 6) + '"/>');
+    // one at the referenced end: two bars (required) or bar + ring (optional)
+    if (e.nullable) parts.push('<path class="foot' + cls + '" d="M' + (bx + bd * 6) + ',' + (by - 6) + ' V' + (by + 6) + '"/><circle class="dot' + cls + '" cx="' + (bx + bd * 13) + '" cy="' + by + '" r="3.5"/>');
+    else parts.push('<path class="foot' + cls + '" d="M' + (bx + bd * 6) + ',' + (by - 6) + ' V' + (by + 6) + ' M' + (bx + bd * 10) + ',' + (by - 6) + ' V' + (by + 6) + '"/>');
+    hits.push('<path class="hit" data-i="' + i + '" d="' + d + '"/>');
+  });
+  // hot edges drawn last so they sit on top
+  svg.innerHTML = parts.filter(function(p){ return p.indexOf(' hot') < 0; }).join('') + parts.filter(function(p){ return p.indexOf(' hot') >= 0; }).join('') + hits.join('');
+  svg._edges = es;
+  markHotCols(es);
+}
+function markHotCols(es){
+  [].forEach.call(world.querySelectorAll('.col.hot'), function(el){ el.classList.remove('hot'); });
+  if (!hot) return;
+  var mark = function(t, c){ var el = world.querySelector('.card[data-t="' + t + '"] .col[data-c="' + c + '"]'); if (el) el.classList.add('hot'); };
+  mark(hot.t, hot.c);
+  es.forEach(function(e){ if (isHot(e)) { mark(e.from, e.fcol); mark(e.to, e.tcol); } });
+}
+var raf = 0;
+function schedule(){ if (!raf) raf = requestAnimationFrame(function(){ raf = 0; drawEdges(); }); }
+
+// ------------------------------------------------------------------ view (pan / zoom)
+function applyView(){
+  world.style.transform = 'translate(' + view.x + 'px,' + view.y + 'px) scale(' + view.k + ')';
+  $('zlbl').textContent = Math.round(view.k * 100) + '%';
+}
+function zoomAt(k, cx, cy){
+  k = Math.max(0.25, Math.min(2, k));
+  view.x = cx - (cx - view.x) * (k / view.k); view.y = cy - (cy - view.y) * (k / view.k); view.k = k; applyView();
+}
+function fit(){
+  var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  tables.forEach(function(t){ var p = pos[t.name]; x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x + CARD_W); y1 = Math.max(y1, p.y + cardH(t)); });
+  var W = canvas.clientWidth, H = canvas.clientHeight, pad = 40;
+  var k = Math.max(0.25, Math.min(1, (W - pad * 2) / (x1 - x0 + 60), (H - pad * 2) / (y1 - y0)));
+  view.k = k; view.x = (W - (x1 - x0) * k) / 2 - x0 * k; view.y = (H - (y1 - y0) * k) / 2 - y0 * k; applyView();
+}
+
+// pointer handling: drag a card by its header, pan on the background, pinch to zoom
+var pointers = {}, drag = null, pinch = null;
+canvas.addEventListener('pointerdown', function(ev){
+  if (ev.button !== 0 && ev.pointerType === 'mouse') return;
+  pointers[ev.pointerId] = {x: ev.clientX, y: ev.clientY};
+  var ids = Object.keys(pointers);
+  if (ids.length === 2) {
+    var p1 = pointers[ids[0]], p2 = pointers[ids[1]];
+    pinch = {d: Math.hypot(p1.x - p2.x, p1.y - p2.y), k: view.k}; drag = null; return;
+  }
+  var head = ev.target.closest('.chead'), card = ev.target.closest('.card');
+  if (head) {
+    var t = card.dataset.t;
+    drag = {type:'card', t:t, el:card, sx:ev.clientX, sy:ev.clientY, ox:pos[t].x, oy:pos[t].y, moved:false};
+  } else if (!card) {
+    drag = {type:'pan', sx:ev.clientX, sy:ev.clientY, ox:view.x, oy:view.y, moved:false};
+    canvas.classList.add('panning');
+  } else return;
+  canvas.setPointerCapture(ev.pointerId);
+});
+canvas.addEventListener('pointermove', function(ev){
+  if (pointers[ev.pointerId]) pointers[ev.pointerId] = {x: ev.clientX, y: ev.clientY};
+  if (pinch) {
+    var ids = Object.keys(pointers); if (ids.length < 2) return;
+    var p1 = pointers[ids[0]], p2 = pointers[ids[1]], r = canvas.getBoundingClientRect();
+    zoomAt(pinch.k * Math.hypot(p1.x - p2.x, p1.y - p2.y) / pinch.d, (p1.x + p2.x) / 2 - r.left, (p1.y + p2.y) / 2 - r.top); return;
+  }
+  if (!drag) return;
+  var dx = ev.clientX - drag.sx, dy = ev.clientY - drag.sy;
+  if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+  if (drag.type === 'pan') { view.x = drag.ox + dx; view.y = drag.oy + dy; applyView(); }
+  else if (drag.moved) {
+    drag.el.classList.add('dragging');
+    pos[drag.t] = {x: Math.round(drag.ox + dx / view.k), y: Math.round(drag.oy + dy / view.k)};
+    drag.el.style.left = pos[drag.t].x + 'px'; drag.el.style.top = pos[drag.t].y + 'px';
+    schedule();
+  }
+});
+function endPointer(ev){
+  delete pointers[ev.pointerId];
+  if (pinch) { if (Object.keys(pointers).length < 2) pinch = null; return; }
+  if (!drag) return;
+  canvas.classList.remove('panning');
+  if (drag.type === 'card') { drag.el.classList.remove('dragging'); if (drag.moved) save(); else select(drag.t); }
+  else if (!drag.moved) { select(null); }
+  drag = null;
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+canvas.addEventListener('wheel', function(ev){
+  ev.preventDefault();
+  var r = canvas.getBoundingClientRect();
+  if (ev.ctrlKey || Math.abs(ev.deltaY) > Math.abs(ev.deltaX)) zoomAt(view.k * Math.exp(-ev.deltaY * 0.0015), ev.clientX - r.left, ev.clientY - r.top);
+  else { view.x -= ev.deltaX; applyView(); }
+}, {passive:false});
+
+// hover: a column lights up its key pair; an edge names itself
+world.addEventListener('mouseover', function(ev){
+  var col = ev.target.closest('.col');
+  if (col) { hot = {t: col.closest('.card').dataset.t, c: col.dataset.c}; drawEdges(); }
+});
+world.addEventListener('mouseout', function(ev){
+  var col = ev.target.closest('.col');
+  if (col && !col.contains(ev.relatedTarget)) { hot = null; drawEdges(); }
+});
+world.addEventListener('click', function(ev){
+  var col = ev.target.closest('.col'); if (!col) return;
+  select(col.closest('.card').dataset.t);
+});
+world.addEventListener('keydown', function(ev){
+  var h = ev.target.closest('.chead');
+  if (h && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); select(h.closest('.card').dataset.t); }
+});
+svg.addEventListener('mousemove', function(ev){
+  var hit = ev.target.closest('.hit'), tip = $('tip');
+  if (!hit) { tip.hidden = true; return; }
+  var e = svg._edges[+hit.dataset.i], r = canvas.getBoundingClientRect();
+  tip.textContent = e.from + '.' + e.fcol + '  ->  ' + e.to + '.' + e.tcol;
+  tip.style.left = (ev.clientX - r.left + 12) + 'px'; tip.style.top = (ev.clientY - r.top + 12) + 'px'; tip.hidden = false;
+});
+svg.addEventListener('mouseleave', function(){ $('tip').hidden = true; });
+
+// ------------------------------------------------------------------ details drawer
+function cell(v){
+  if (v === null || v === undefined) return '<span class="nul">NULL</span>';
+  if (v instanceof Uint8Array) return '<span class="nul">BLOB ' + v.length + ' bytes</span>';
+  var s = String(v); return esc(s.length > 60 ? s.slice(0, 60) + '...' : s);
+}
+function select(t){
+  sel = t;
+  [].forEach.call(world.querySelectorAll('.card'), function(el){ el.classList.toggle('sel', el.dataset.t === t); });
+  drawEdges(); drawDrawer();
+}
+function drawDrawer(q){
+  var dr = $('drawer');
+  if (!sel) { dr.hidden = true; return; }
+  var t = byName[sel], d = data[sel], o = [];
+  dr.hidden = false;
+  $('dname').textContent = t.name;
+  var cnt = d ? d.rows.length : t.count;
+  o.push('<p class="note">' + n(cnt) + (cnt === 1 ? ' row' : ' rows') + ' · ' + t.columns.length + ' columns</p>');
+  o.push('<h3>Columns</h3><div class="tw"><table><thead><tr><th>Name</th><th>Type</th><th>Key</th><th>Null</th><th>Default</th></tr></thead><tbody>');
+  t.columns.forEach(function(c){
+    var f = t.fks.filter(function(x){ return x.from === c.name; })[0];
+    var key = (c.pk ? 'PK' + (t.columns.filter(function(x){ return x.pk; }).length > 1 ? ' (' + c.pk + ')' : '') : '') + (f ? (c.pk ? ', ' : '') + 'FK -> <a class="lk" data-go="' + esc(f.table) + '">' + esc(f.table) + '</a>' : '');
+    o.push('<tr><td>' + esc(c.name) + '</td><td>' + esc(c.type || '') + '</td><td>' + key + '</td><td>' + (c.notnull || c.pk ? 'no' : 'yes') + '</td><td>' + (c.dflt === null || c.dflt === undefined ? '' : esc(c.dflt)) + '</td></tr>');
+  });
+  o.push('</tbody></table></div>');
+  var out = t.fks.filter(function(f){ return byName[f.table]; }), inc = [];
+  tables.forEach(function(x){ x.fks.forEach(function(f){ if (f.table === t.name) inc.push({t:x.name, f:f}); }); });
+  o.push('<h3>Relationships</h3>');
+  if (!out.length && !inc.length) o.push('<div class="empty">No foreign keys in or out.</div>');
+  else {
+    o.push('<ul class="rel">');
+    out.forEach(function(f){ o.push('<li>' + esc(f.from) + ' -> <a class="lk" data-go="' + esc(f.table) + '">' + esc(f.table) + '</a>.' + esc(f.to || 'pk') + '</li>'); });
+    inc.forEach(function(r){ o.push('<li><a class="lk" data-go="' + esc(r.t) + '">' + esc(r.t) + '</a>.' + esc(r.f.from) + ' -> ' + esc(r.f.to || 'pk') + '</li>'); });
+    o.push('</ul>');
+  }
+  o.push('<h3>Rows</h3>');
+  if (!d || !d.rows.length) o.push('<div class="empty">' + (d ? 'This table is empty in ' + esc(source.name) + '.' : 'No rows. Open a .sqlite3 file to see what it holds.') + '</div>');
+  else {
+    o.push('<input class="flt" id="flt" type="search" placeholder="Filter rows" value="' + esc(q || '') + '">');
+    var ql = (q || '').toLowerCase(), rows = d.rows;
+    if (ql) rows = rows.filter(function(r){ return r.some(function(v){ return v !== null && String(v).toLowerCase().indexOf(ql) >= 0; }); });
+    var fkAt = {}; t.fks.forEach(function(f){ fkAt[f.from] = f; });
+    var pki = d.cols.indexOf((t.columns.filter(function(c){ return c.pk; })[0] || {}).name);
+    o.push('<div class="tw" style="max-height:360px;overflow:auto"><table><thead><tr>' + d.cols.map(function(c){ return '<th>' + esc(c) + '</th>'; }).join('') + '</tr></thead><tbody>');
+    rows.slice(0, 300).forEach(function(r){
+      var fl = flash && flash.t === t.name && pki >= 0 && String(r[pki]) === String(flash.v);
+      o.push('<tr' + (fl ? ' class="flash" id="flashrow"' : '') + '>' + r.map(function(v, i){
+        var f = fkAt[d.cols[i]];
+        return '<td>' + (f && v !== null ? '<a class="lk" data-jt="' + esc(f.table) + '" data-jv="' + esc(v) + '">' + cell(v) + '</a>' : cell(v)) + '</td>';
+      }).join('') + '</tr>');
+    });
+    o.push('</tbody></table></div><p class="note">' + n(Math.min(300, rows.length)) + ' of ' + n(rows.length) + ' shown. Linked values are foreign keys: select one to open the row it points at.</p>');
+  }
+  if (t.indexes.length) {
+    o.push('<h3>Indexes</h3><ul class="rel">');
+    t.indexes.forEach(function(ix){
+      var kind = ix.origin === 'pk' ? 'primary key' : ix.origin === 'u' ? 'unique constraint' : (ix.unique ? 'unique index' : 'index') + (ix.partial ? ', partial' : '');
+      o.push('<li>' + esc(ix.name) + ' <span class="note" style="display:inline">(' + esc(ix.cols.join(', ')) + ' · ' + kind + ')</span></li>');
+    });
+    o.push('</ul>');
+  }
+  o.push('<h3>As stored in SQLite</h3><pre>' + esc(prettySql(t.sql || '')) + '</pre>');
+  t.indexes.forEach(function(ix){ if (ix.sql) o.push('<pre style="margin-top:6px">' + esc(ix.sql) + '</pre>'); });
+  $('dbody').innerHTML = o.join('');
+  var flt = $('flt');
+  if (flt) { flt.addEventListener('input', function(){ var v = this.value; drawDrawer(v); var f2 = $('flt'); f2.focus(); f2.setSelectionRange(v.length, v.length); }); }
+  [].forEach.call($('dbody').querySelectorAll('[data-go]'), function(a){ a.tabIndex = 0; a.addEventListener('click', function(){ flash = null; select(a.dataset.go); }); });
+  [].forEach.call($('dbody').querySelectorAll('[data-jt]'), function(a){ a.tabIndex = 0; a.addEventListener('click', function(){
+    flash = {t: a.dataset.jt, v: a.dataset.jv}; select(a.dataset.jt); var fr = $('flashrow'); if (fr) fr.scrollIntoView({block:'center'});
+  }); });
+}
+function prettySql(s){ return s.replace(/\(\s*\n?\s*/, '(\n\t').replace(/,\s*\n?\s*(?=(?:[a-z_]+ |CONSTRAINT|PRIMARY|FOREIGN|UNIQUE|CHECK))/gi, ',\n\t').replace(/\s*\)\s*$/, '\n)'); }
+
+// ------------------------------------------------------------------ loading files
+function readSqlite(buf){
+  if (typeof window.initSqlJs !== 'function') return Promise.reject(new Error('the SQLite reader (sql.js) did not load'));
+  return window.initSqlJs().then(function(SQL){
+    var db = new SQL.Database(new Uint8Array(buf));
+    function q(sql){ var r = db.exec(sql)[0]; return r ? r.values : []; }
+    var list = [], rows = {};
+    q("SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").forEach(function(r){
+      var name = r[0], qn = '"' + name.replace(/"/g, '""') + '"';
+      var cols = q('PRAGMA table_info(' + qn + ')').map(function(v){ return {name:v[1], type:v[2], notnull:v[3], dflt:v[4], pk:v[5]}; });
+      var fks = q('PRAGMA foreign_key_list(' + qn + ')').map(function(v){ return {from:v[3], table:v[2], to:v[4]}; });
+      var idx = q('PRAGMA index_list(' + qn + ')').map(function(v){
+        var ic = q('PRAGMA index_info("' + String(v[1]).replace(/"/g, '""') + '")').map(function(x){ return x[2]; });
+        var s = db.exec("SELECT sql FROM sqlite_master WHERE name = '" + String(v[1]).replace(/'/g, "''") + "'")[0];
+        return {name:v[1], unique:v[2], origin:v[3], partial:v[4], cols:ic, sql: s ? s.values[0][0] : null};
+      });
+      var res = db.exec('SELECT * FROM ' + qn)[0];
+      rows[name] = {cols: res ? res.columns : cols.map(function(c){ return c.name; }), rows: res ? res.values : []};
+      list.push({name:name, sql:r[1], columns:cols, fks:fks, indexes:idx, count:rows[name].rows.length});
+    });
+    db.close();
+    return {tables:list, rows:rows};
+  });
+}
+function readJson(text){
+  var j = JSON.parse(text), rows = {};
+  Object.keys(j).forEach(function(t){
+    if (!Array.isArray(j[t]) || !byNameBase[t]) return;
+    var cols = byNameBase[t].columns.map(function(c){ return c.name; });
+    rows[t] = {cols: cols, rows: j[t].map(function(r){ return cols.map(function(c){ return r[c] === undefined ? null : r[c]; }); })};
+  });
+  return {tables: BASE, rows: rows};
+}
+var byNameBase = {}; BASE.forEach(function(t){ byNameBase[t.name] = t; });
+
+function useResult(res, src){
+  source = src; data = res.rows;
+  tables.length === res.tables.length && res.tables.every(function(t){ return byName[t.name]; }) ? (function(){ tables = res.tables; tables.forEach(function(t){ byName[t.name] = t; }); })() : setTables(res.tables);
+  render();
+}
+function openFile(f){
+  setSrc('Reading <b>' + esc(f.name) + '</b>...');
+  var json = /\.json$/i.test(f.name), rd = new FileReader();
+  rd.onerror = function(){ setSrc('<span class="err">Could not read ' + esc(f.name) + '.</span>'); };
+  rd.onload = function(){
+    if (json) { try { useResult(readJson(rd.result), {name: f.name, kind: 'JSON'}); } catch (e) { setSrc('<span class="err">' + esc(f.name) + ' is not valid JSON: ' + esc(e.message) + '</span>'); } return; }
+    readSqlite(rd.result).then(function(res){ useResult(res, {name: f.name, kind: 'SQLite'}); }, function(e){
+      setSrc('<span class="err">Could not open ' + esc(f.name) + ': ' + esc(e.message) + '. Check that it is a SQLite file.</span>');
+    });
+  };
+  json ? rd.readAsText(f) : rd.readAsArrayBuffer(f);
+}
+function setSrc(h){ $('src').innerHTML = h; }
+
+// A small made-up mission, so the diagram can be seen with rows in it. Nothing here is real.
+function example(){
+  var seed = 7; function rnd(){ seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }
+  var t0 = Date.UTC(2026, 9, 24, 15, 0, 0);
+  function T(min){ return new Date(t0 + Math.round(min * 60) * 1000).toISOString().replace(/\.\d+Z$/, 'Z'); }
+  var lat0 = 39.70, lon0 = -105.08, d = {};
+  d.message_type = BASE_ROWS.message_type;
+  d.mission = [{mission_id:1, mission_uuid:'00000000-0000-4000-8000-000000000001', name:'Example mission (made up)', start_time:T(0), end_time:T(240)}];
+  d.search_area = [{search_area_id:1, mission_id:1, min_lat:lat0, min_lon:lon0, max_lat:lat0 + 0.06, max_lon:lon0 + 0.10}];
+  d.search_group = [{search_group_id:1}, {search_group_id:2}, {search_group_id:3}];
+  d.team = [1,2,3,4,5].map(function(i){ return {team_id:i, node_num:2882400000 + i * 17, active: i < 5 ? 1 : 0}; });
+  d.searcher = ['Alpha','Bravo','Charlie','Delta','Echo','Foxtrot'].map(function(s, i){ return {searcher_id:i + 1, fname:'Example', lname:s}; });
+  d.searcher_team_assignment = [[1,1],[2,1],[3,2],[4,3],[5,4],[6,5]].map(function(p, i){ return {assignment_id:i + 1, searcher_id:p[0], team_id:p[1], from_time:T(0), to_time: p[1] === 5 ? T(150) : null}; });
+  d.team_group_assignment = [[1,1],[2,1],[3,2],[4,3],[5,3]].map(function(p, i){ return {assignment_id:i + 1, team_id:p[0], search_group_id:p[1], from_time:T(0), to_time: p[0] === 5 ? T(150) : null}; });
+  d.search_sector = [
+    {search_sector_id:1, search_group_id:1, status:'completed', created_time:T(5), completed_time:T(120)},
+    {search_sector_id:2, search_group_id:2, status:'searching', created_time:T(5), completed_time:null},
+    {search_sector_id:3, search_group_id:3, status:'searching', created_time:T(10), completed_time:null},
+    {search_sector_id:4, search_group_id:null, status:'drawn', created_time:T(115), completed_time:null}];
+  d.search_sector_point = [];
+  [[0.004,0.006,0.030,0.040],[0.032,0.008,0.056,0.044],[0.006,0.050,0.028,0.092],[0.032,0.054,0.056,0.094]].forEach(function(b, i){
+    [[b[0],b[1]],[b[0],b[3]],[b[2],b[3]],[b[2],b[1]]].forEach(function(p, j){ d.search_sector_point.push({search_sector_id:i + 1, point_order:j + 1, lat:+(lat0 + p[0]).toFixed(6), lon:+(lon0 + p[1]).toFixed(6)}); });
+  });
+  d.sector_entry = [{team_id:1,search_sector_id:1,entered_time:T(14)},{team_id:2,search_sector_id:1,entered_time:T(16)},{team_id:3,search_sector_id:2,entered_time:T(18)},{team_id:4,search_sector_id:3,entered_time:T(22)},{team_id:5,search_sector_id:3,entered_time:T(25)}];
+  d.location = [];
+  [1,2,3,4,5].forEach(function(team){
+    var la = 0.01 + rnd() * 0.03, lo = 0.01 + rnd() * 0.07;
+    for (var i = 0; i < 40; i++) {
+      la += (rnd() - 0.5) * 0.002; lo += (rnd() - 0.5) * 0.002;
+      d.location.push({team_id:team, time:T(i * 5 + team * 0.25), rx_time:T(i * 5 + team * 0.25 + 0.05), lat:+(lat0 + la).toFixed(6), lon:+(lon0 + lo).toFixed(6), elevation:+(1650 + rnd() * 60).toFixed(1)});
+    }
+  });
+  d.message = [
+    {message_id:1, team_id:1, time:T(6), rx_time:T(6), direction:'out', type_code:'assignment', text:'Group 1: sector 1'},
+    {message_id:2, team_id:3, time:T(6), rx_time:T(6), direction:'out', type_code:'assignment', text:'Group 2: sector 2'},
+    {message_id:3, team_id:2, time:T(74), rx_time:T(75), direction:'in', type_code:'evidence', text:'Example item found near north edge'},
+    {message_id:4, team_id:1, time:T(80), rx_time:T(80), direction:'out', type_code:'instruction', text:'Hold position, mark the item'},
+    {message_id:5, team_id:5, time:T(140), rx_time:T(141), direction:'in', type_code:'out_of_sector', text:'Leaving sector 3 for trailhead'}];
+  return d;
+}
+
+// ------------------------------------------------------------------ shell
+function render(){
+  if (!source) setSrc('<b>Empty database</b> · ' + tables.length + ' tables from backend/missiondb (migration 0001). Only message_type has rows (its 4 seed types).');
+  else {
+    var total = 0, filled = 0;
+    tables.forEach(function(t){ var c = data[t.name] ? data[t.name].rows.length : 0; total += c; if (c) filled++; });
+    setSrc('<b>' + esc(source.name) + '</b> · ' + source.kind + ' · ' + n(total) + ' rows in ' + filled + ' of ' + tables.length + ' tables' + (source.example ? ' · made-up example rows, not a real mission' : ' · read in this browser, not uploaded'));
+  }
+  renderCards(); drawEdges(); drawDrawer();
+}
+$('open').addEventListener('click', function(){ $('file').click(); });
+$('file').addEventListener('change', function(){ if (this.files[0]) openFile(this.files[0]); this.value = ''; });
+$('example').addEventListener('click', function(){ var r = readJson(JSON.stringify(example())); useResult(r, {name:'example-mission', kind:'example', example:true}); });
+$('reset').addEventListener('click', function(){ try { localStorage.removeItem(KEY); } catch (e) {} pos = autoLayout(); renderCards(); drawEdges(); fit(); });
+$('fit').addEventListener('click', fit);
+$('zin').addEventListener('click', function(){ zoomAt(view.k * 1.2, canvas.clientWidth / 2, canvas.clientHeight / 2); });
+$('zout').addEventListener('click', function(){ zoomAt(view.k / 1.2, canvas.clientWidth / 2, canvas.clientHeight / 2); });
+$('dclose').addEventListener('click', function(){ select(null); });
+canvas.addEventListener('dragover', function(e){ e.preventDefault(); canvas.classList.add('drop'); });
+canvas.addEventListener('dragleave', function(){ canvas.classList.remove('drop'); });
+canvas.addEventListener('drop', function(e){ e.preventDefault(); canvas.classList.remove('drop'); var f = e.dataTransfer.files[0]; if (f) openFile(f); });
+window.addEventListener('resize', function(){ if (!drag) applyView(); });
+
+setTables(BASE);
+data = readJson(JSON.stringify(BASE_ROWS)).rows;
+render();
+requestAnimationFrame(fit);
+})();
+</script>
+
+</body></html>
