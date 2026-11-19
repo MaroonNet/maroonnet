@@ -1,0 +1,45 @@
+note: 'Frozen test set: never train on these ids; do not redraw after seeing results.'
+source: mapscore
+fraction: 0.3333
+seed: 20261104
+strata:
+- category
+- terrain
+created_utc: '2026-11-04T19:47:55+00:00'
+n: 35
+case_ids:
+- mapscore:Arizona04
+- mapscore:Arizona100
+- mapscore:Arizona110
+- mapscore:Arizona111
+- mapscore:Arizona113
+- mapscore:Arizona115
+- mapscore:Arizona116
+- mapscore:Arizona119
+- mapscore:Arizona14
+- mapscore:Arizona15
+- mapscore:Arizona18
+- mapscore:Arizona29
+- mapscore:Arizona30
+- mapscore:Arizona36
+- mapscore:Arizona39
+- mapscore:Arizona40
+- mapscore:Arizona43
+- mapscore:Arizona44
+- mapscore:Arizona49
+- mapscore:Arizona51
+- mapscore:Arizona53
+- mapscore:Arizona54
+- mapscore:Arizona56
+- mapscore:Arizona59
+- mapscore:Arizona60
+- mapscore:Arizona69
+- mapscore:Arizona71
+- mapscore:Arizona73
+- mapscore:Arizona74
+- mapscore:Arizona78
+- mapscore:Arizona80
+- mapscore:Arizona83
+- mapscore:Arizona86
+- mapscore:Arizona89
+- mapscore:Arizona97
