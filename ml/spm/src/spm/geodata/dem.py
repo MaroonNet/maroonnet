@@ -78,11 +78,18 @@ def fetch_tiles(names: list[str], tile_dir: Path) -> list[Path]:
     return out
 
 
-def read_dem(window: Window, tile_dir: Path | None = None, sources: list[str] | None = None):
+def read_dem(
+    window: Window,
+    tile_dir: Path | None = None,
+    sources: list[str] | None = None,
+    failed: list[str] | None = None,
+):
     """Elevation (m, float32) on the window grid; NaN where no tile has data.
 
     ``sources`` overrides the tile lookup (paths or GDAL URLs), mainly for tests.
-    Resampling is bilinear, as elevation is continuous.
+    Resampling is bilinear, as elevation is continuous. Remote tiles that could not be
+    read for a reason other than "no such tile" (offline, timeout) are appended to
+    ``failed``, so the caller can tell a gap in 3DEP from a gap in the connection.
     """
     if sources is None:
         names = tiles_for_bounds(*window_lonlat_bounds(window))
@@ -105,6 +112,8 @@ def read_dem(window: Window, tile_dir: Path | None = None, sources: list[str] | 
                     src_path,
                     str(err).splitlines()[0][:120],
                 )
+                if failed is not None:
+                    failed.append(src_path)
             continue
         with src:
             reproject(

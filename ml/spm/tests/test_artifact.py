@@ -91,3 +91,13 @@ def test_heatmap_and_overlay_write(pred, tmp_path):
     assert tl[0] < tr[0] and bl[1] < tl[1]  # west < east, south < north
     assert tl[0] < c.ipp.lon < tr[0] and bl[1] < c.ipp.lat < tl[1]  # IPP inside the overlay
     assert meta["p_outside"] == pytest.approx(p.p_outside)
+
+
+def test_committed_hybrid_model_treats_missing_elevation_as_neutral():
+    """models/hybrid.json: no elevation -> elev_pos's middle bin, never 'high ground'."""
+    from pathlib import Path
+
+    model = load_model(Path(__file__).parents[1] / "models" / "hybrid.json")
+    spec = next(s for s in model.specs if s.name == "elev_pos")
+    assert spec.bin_index(np.array([np.nan])).tolist() == [1]
+    assert spec.prior[1] == 1.0

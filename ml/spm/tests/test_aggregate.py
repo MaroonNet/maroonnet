@@ -203,3 +203,13 @@ def test_predict_at_finer_resolution_than_training():
     assert fine.p_outside == pytest.approx(coarse.p_outside, abs=0.02)
     summed = fine.prob.reshape(coarse_w.n, 5, coarse_w.n, 5).sum(axis=(1, 3))
     assert summed.sum() == pytest.approx(coarse.prob.sum(), abs=0.02)
+
+
+def test_no_line_in_the_window_is_not_missing_data():
+    """An infinite distance (no trail anywhere) is the 'beyond' bin; only NaN is flagged."""
+    v = np.full((4, 4), np.inf)
+    seen = {"dist_trail_m": (0, 300)}
+    assert not aggregate.out_of_range([TRAIL], {"dist_trail_m": v}, seen, 2).any()
+    v[0, 0] = np.nan
+    flags = aggregate.out_of_range([TRAIL], {"dist_trail_m": v}, seen, 2)
+    np.testing.assert_array_equal(flags, [[True, False], [False, False]])

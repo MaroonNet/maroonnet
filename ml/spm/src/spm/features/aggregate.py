@@ -155,18 +155,25 @@ def out_of_range(
     factor: int,
 ) -> np.ndarray:
     """(n, n) True where any sub-cell has a feature value outside its training range,
-    or no value at all (no elevation data there).
+    or a value that could not be computed (NaN: no elevation data there).
 
     Values are first clipped to the spec's outer edges: beyond the last edge every
     value lands in the same bin, so a cell 20 km from a trail is no more of an
-    extrapolation than one 2 km away when the last edge is 40 m.
+    extrapolation than one 2 km away when the last edge is 40 m. For the same reason
+    an infinite distance (no trail, road or stream anywhere in the window) is the
+    ordinary "beyond" bin, not missing data, and is not flagged.
+
+    With the committed models this range check cannot fire: every distance feature has
+    one edge, so the clipped interval is a single point, and elev_pos was trained over
+    its whole 0..1 range. The flags a map shows come from ``no_data`` and from the cap
+    on stacked multipliers.
     """
     n_fine = next(iter(feats.values())).shape[0]
     n = n_fine // factor
     flags = np.zeros((n_fine, n_fine), bool)
     for s in specs:
         if s.name in feats:
-            flags |= ~np.isfinite(feats[s.name])
+            flags |= np.isnan(feats[s.name])
         if s.name in feats and s.name in ranges:
             lo, hi = np.clip(ranges[s.name], s.edges[0], s.edges[-1])
             v = np.clip(feats[s.name], s.edges[0], s.edges[-1])

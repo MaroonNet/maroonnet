@@ -67,7 +67,10 @@ class StackBuilder:
         if cache_dir is not None:
             for path in sorted(Path(cache_dir, "regions").glob("*.npz")):
                 try:
-                    self._regions.append(_load_stack(path))
+                    region = _load_stack(path)
+                    if not _has_elevation(region.layers):
+                        raise ValueError("it holds no elevation (built offline); rebuild it")
+                    self._regions.append(region)
                 except (ValueError, OSError) as err:
                     log.warning("skipping region stack %s: %s", path.name, err)
 
@@ -132,11 +135,11 @@ class StackBuilder:
         _, source = self.sources(window)
         if path is not None and path.exists():
             stack = _load_stack(path)
-            if self._cache_ok(path, stack.source, window):
+            if self._cache_ok(path, stack.source, window) and _has_elevation(stack.layers):
                 self._add_region(stack)
                 return stack
-        stack = self.build(window)
-        if path is not None:
+        stack, keep = self._build(window)
+        if path is not None and keep:
             path.parent.mkdir(parents=True, exist_ok=True)
             np.savez_compressed(path, _source=np.array(stack.source), **stack.layers)
         self._add_region(stack)
@@ -186,10 +189,21 @@ class StackBuilder:
         return None
 
     def build(self, window: Window) -> FeatureStack:
+        return self._build(window)[0]
+
+    def _build(self, window: Window) -> tuple[FeatureStack, bool]:
+        """(stack, keep): ``keep`` is False when the stack must not be cached, because a
+        tile could not be read (offline) or the window has no elevation at all. A stack
+        built without its elevation would otherwise be reused after the tiles arrive."""
         per_class, source = self.sources(window)
-        layers = {"dem": dem.read_dem(window, self.tile_dir)}
+        failed: list[str] = []
+        elev = dem.read_dem(window, self.tile_dir, failed=failed)
+        layers = {"dem": elev}
         layers.update(lines.masks(per_class, window))
-        return FeatureStack(window=window, layers=layers, source=source)
+        keep = not failed and bool(np.isfinite(elev).any())
+        if not keep:
+            log.warning("stack for %s is not cached: elevation is incomplete", _stack_name(window))
+        return FeatureStack(window=window, layers=layers, source=source), keep
 
     def __call__(self, case: Case | None, window: Window) -> FeatureStack:
         cropped = self.crop(window)
@@ -199,14 +213,20 @@ class StackBuilder:
         if path is not None and path.exists():
             with np.load(path) as z:
                 source = str(z["_source"])
-                if self._cache_ok(path, source, window):
+                if self._cache_ok(path, source, window) and _has_elevation(z):
                     layers = {k: z[k] for k in z.files if k != "_source"}
                     return FeatureStack(window=window, layers=layers, source=source)
-        stack = self.build(window)
-        if path is not None:
+        stack, keep = self._build(window)
+        if path is not None and keep:
             path.parent.mkdir(parents=True, exist_ok=True)
             np.savez_compressed(path, _source=np.array(stack.source), **stack.layers)
         return stack
+
+
+def _has_elevation(layers) -> bool:
+    """False for a stack saved with no elevation at all (built offline by an earlier
+    version): such a file is rebuilt instead of reused."""
+    return "dem" not in layers or bool(np.isfinite(layers["dem"]).any())
 
 
 def _stack_name(w: Window) -> str:

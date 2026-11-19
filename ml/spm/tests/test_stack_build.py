@@ -135,3 +135,24 @@ def test_region_crop_downsamples_to_a_coarser_window(gpkg, tile_dir, tmp_path):
     )
     assert stack["trail_mask"].sum() <= fine["trail_mask"].sum()
     assert stack["trail_mask"].any() == fine["trail_mask"].any()
+
+
+def test_stack_built_offline_is_not_cached_and_does_not_win_later(
+    gpkg, tile_dir, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(dem, "BASE_URL", "http://127.0.0.1:9/unreachable")  # "offline"
+    no_tiles = tmp_path / "no_tiles"
+    no_tiles.mkdir()
+    cache = tmp_path / "cache"
+    w = Window.around(LON, LAT, side_m=1000, res=50)
+    offline = StackBuilder(gpkg, tile_dir=no_tiles, cache_dir=cache)(None, w)
+    assert not np.isfinite(offline["dem"]).any()
+    assert not list(cache.glob("*.npz"))
+    # a stack saved without elevation by an earlier version is rebuilt, not reused
+    cache.mkdir(exist_ok=True)
+    stale = cache / f"{w.epsg}_{w.x0:.0f}_{w.y0:.0f}_{w.res:g}_{w.n}.npz"
+    np.savez_compressed(stale, _source=np.array(offline.source), **offline.layers)
+    online = StackBuilder(gpkg, tile_dir=tile_dir, cache_dir=cache)(None, w)
+    assert np.isfinite(online["dem"]).all()
+    with np.load(stale) as z:
+        assert np.isfinite(z["dem"]).all()

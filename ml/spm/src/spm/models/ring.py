@@ -100,6 +100,21 @@ class RingModel:
             )
         return self.params["__all__"]
 
+    def has_own_ring(self, category: str) -> bool:
+        """True if ``category`` has a published or fitted ring of its own, so that
+        ``params_for`` does not fall back to the ring pooled over every category."""
+        return not self.pooled_only and category in self.params
+
+    def describe(self, category: str) -> str:
+        """Which ring ``category`` gets, in words, for the console and the map's tags."""
+        mu, _ = self.params_for(category)
+        key = category if self.has_own_ring(category) else "__all__"
+        n = self.n_fit.get(key)
+        origin = "published table" if n == -1 else f"fitted on {n} cases"
+        if key == "__all__":
+            origin = f"POOLED over all categories, {origin}; no ring for {category!r}"
+        return f"{category}: median {math.exp(mu):.2f} km ({origin})"
+
     def predict(self, case, window, stack=None):
         if case.ipp is None:
             raise NotImplementedError(

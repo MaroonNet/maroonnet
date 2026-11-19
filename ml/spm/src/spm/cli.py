@@ -19,6 +19,7 @@ spm holdout --source mapscore --frac 0.33 --seed N      freeze a test set (confi
 from __future__ import annotations
 
 import argparse
+import hashlib
 import logging
 import os
 import re
@@ -55,6 +56,11 @@ def _find_root() -> Path:
 
 
 ROOT = _find_root()
+
+# `spm predict` uses terrain only when elevation covers at least this share of the window.
+# Below it the map would be part terrain, part guess; the command refuses, or with
+# --allow-partial draws the distance ring alone and says so. DRAFT VALUE: the team sets it.
+MIN_DEM_COVERAGE = 0.95
 
 
 def _stamp() -> str:
@@ -129,9 +135,18 @@ def _write_prediction(pred, stem, case, stack, extra):
     flagged = 0.0 if pred.flags is None else float(pred.flags.mean())
     w = pred.window
     print(f"{pred.model} v{pred.model_version}: {w.n}x{w.n} at {w.res:g} m")
-    print(f"outside this map: {pred.p_outside:.1%}; out-of-range cells: {flagged:.1%}")
+    print(
+        f"outside this map: {pred.p_outside:.1%}; flagged cells (no elevation, or terrain "
+        f"multiplier capped): {flagged:.1%}"
+    )
     for p in (tif, png, web, web.with_suffix(".json"), *extra):
         print(f"  {p}")
+
+
+def _holdout_stamp(path: Path, ids: set[str]) -> dict:
+    """Which frozen test set a model was fitted against: id count and the file's hash."""
+    digest = hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
+    return {"file": path.name, "n_ids": len(ids), "sha256": digest}
 
 
 def _named(model, name):
@@ -206,6 +221,11 @@ def main(argv: list[str] | None = None) -> None:
     g.add_argument("--lines", type=Path, nargs="*", default=None, help="default: osm_lines*")
     g.add_argument("--streams", type=Path, nargs="*", default=None, help="default: nhd_lines*")
     g.add_argument("--out", type=Path, default=ROOT / "results")
+    g.add_argument(
+        "--allow-no-holdout",
+        action="store_true",
+        help="run without configs/holdout.yaml: leave-one-out over every IPP case",
+    )
 
     f = sub.add_parser("fit", help="fit a model and write it as JSON")
     f.add_argument("--model", default="model_a", choices=["model_a", "hybrid"])
@@ -255,9 +275,16 @@ def main(argv: list[str] | None = None) -> None:
     pr.add_argument("--max-slope-deg", type=float, default=None, help="impassable above this")
     pr.add_argument("--searched", type=Path, nargs="*", default=None, help="POD GeoJSON/GeoTIFF")
     pr.add_argument(
-        "--allow-missing-dem",
+        "--allow-partial",
         action="store_true",
-        help="apply --elapsed-h even where elevation is missing (those cells become unreachable)",
+        help="run although terrain is incomplete: with no line file or too little elevation "
+        "the map is the distance ring alone, and --elapsed-h treats cells without elevation "
+        "as unreachable",
+    )
+    pr.add_argument(
+        "--allow-pooled-ring",
+        action="store_true",
+        help="for a category the model has no ring for, use the ring pooled over all categories",
     )
 
     up = sub.add_parser("update", help="re-weight a prediction raster after a search")
@@ -394,6 +421,11 @@ def main(argv: list[str] | None = None) -> None:
         filled = ", ".join(s.name for s in specs if s.prior_complete and s.published)
         print(f"Model A (published features only): {filled or 'none'}")
         held_ids = load_holdout(ROOT / HOLDOUT_PATH)
+        if not held_ids and not args.allow_no_holdout:
+            raise SystemExit(
+                f"no frozen test set at {ROOT / HOLDOUT_PATH}: refusing to score. "
+                "Run `spm holdout --seed N` first, or pass --allow-no-holdout."
+            )
         cases, held = partition(load_cases(args.data), held_ids)
         train = [
             c
@@ -576,6 +608,7 @@ def main(argv: list[str] | None = None) -> None:
             },
             "ring_fit": {"source": args.ring_source, "n": len(ring_cases)},
             "holdout_excluded": len(held),
+            "holdout": _holdout_stamp(ROOT / HOLDOUT_PATH, held_ids),
             "shrinkage": {"lam_w": args.lam_w, "lam_region": args.lam_region},
             "dropped_features": list(args.drop),
             "ring_published_categories": sorted(q),
@@ -611,19 +644,58 @@ def main(argv: list[str] | None = None) -> None:
         window = Window.around(lon, lat, side_m=args.side, res=args.res)
         from spm.geodata import dem
 
+        ring = model.prior
+        if not ring.has_own_ring(args.category) and not args.allow_pooled_ring:
+            own = ", ".join(sorted(k for k in ring.params if k != "__all__")) or "none"
+            raise SystemExit(
+                f"{args.model.name} has no distance ring for category {args.category!r} "
+                f"(it has: {own}). Pass --allow-pooled-ring to use the ring pooled over "
+                "every category instead."
+            )
+        print("ring:", ring.describe(args.category))
+        line_files = builder.sources(window)[0]["trail"]
         stack = builder(case, window)
         cov = dem.coverage(stack["dem"]) if stack.has("dem") else 0.0
-        if cov < 1.0:
-            print(f"elevation missing for {1 - cov:.1%} of the window (hatched on the map)")
-        pred = model.predict(case, window, stack)
+        counts = ", ".join(
+            f"{k.removesuffix('_mask')} cells {int(stack[k].sum())}"
+            for k in stack.layers
+            if k != "dem"
+        )
+        print(f"terrain: elevation for {cov:.1%} of the window; {counts}")
+        problems = []
+        if not line_files:
+            problems.append("no trail/road file (osm_lines*.gpkg) covers this window")
+        if cov < MIN_DEM_COVERAGE:
+            problems.append(
+                f"elevation covers {cov:.0%} of the window, under {MIN_DEM_COVERAGE:.0%} "
+                "(offline, or tiles not fetched: run `spm fetch-dem` with the window bounds)"
+            )
+        if problems and not args.allow_partial:
+            raise SystemExit(
+                "terrain is incomplete: "
+                + "; ".join(problems)
+                + ". Pass --allow-partial for a distance-only map (the ring, no terrain)."
+            )
+        if problems:
+            pred = ring.predict(case, window)
+            pred.model, pred.model_version = f"{model.name}-ring-only", model.version
+            pred.flags = ~np.isfinite(stack["dem"])
+            pred.notes["warning"] = "terrain NOT used, distance ring only: " + "; ".join(problems)
+            print("WARNING:", pred.notes["warning"])
+        else:
+            if cov < 1.0:
+                print(f"elevation missing for {1 - cov:.1%} of the window (hatched on the map)")
+            pred = model.predict(case, window, stack)
+        pred.notes["ring"] = ring.describe(args.category)
+        pred.notes["elevation_coverage"] = f"{cov:.4f}"
         pred.check()
         stem = args.out or ROOT / "predictions" / _stamp()
         extra = []
-        if args.elapsed_h is not None and cov < 1.0 and not args.allow_missing_dem:
+        if args.elapsed_h is not None and cov < 1.0 and not args.allow_partial:
             raise SystemExit(
                 f"--elapsed-h needs elevation everywhere, but {1 - cov:.1%} of the window has "
                 "none (offline, or tiles not fetched): run `spm fetch-dem` with the window "
-                "bounds, or pass --allow-missing-dem to mark those cells unreachable."
+                "bounds, or pass --allow-partial to mark those cells unreachable."
             )
         if args.elapsed_h is not None:
             from spm.geodata.travel import travel_hours

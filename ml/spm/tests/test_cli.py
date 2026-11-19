@@ -110,14 +110,54 @@ def test_predict_then_update(project, tmp_path):
     assert prob2[:, :10].sum() < prob[:, :10].sum()
 
 
-def test_predict_refuses_time_cap_without_elevation(project):
-    # a window reaching past the east edge of the synthetic tile has no elevation there
-    with pytest.raises(SystemExit, match="elevation everywhere"):
-        run(project, *predict_args(project, lon=-74.405, elapsed_h=2))
-    run(project, *predict_args(project, lon=-74.405, elapsed_h=2, allow_missing_dem=None))
-    with rasterio.open(project["root"] / "predictions" / "run.tif") as ds:
-        flags = ds.read(3)
+def test_predict_refuses_incomplete_terrain_then_draws_the_ring_alone(project, tmp_path):
+    # a window reaching past the east edge of the synthetic tile: elevation for 71% of it,
+    # and no line file reaches that far
+    with pytest.raises(SystemExit, match="terrain is incomplete"):
+        run(project, *predict_args(project, lon=-74.405))
+    run(project, *predict_args(project, lon=-74.405, elapsed_h=2, allow_partial=None))
+    stem = project["root"] / "predictions" / "run"
+    with rasterio.open(stem.with_suffix(".tif")) as ds:
+        tags, flags = ds.tags(), ds.read(3)
+    assert tags["model"] == "bayes_prior_art-ring-only+cap2h"
+    assert "terrain NOT used" in tags["spm_warning"]
+    overlay = json.loads(stem.with_name("run_overlay.json").read_text())
+    assert "terrain NOT used" in overlay["notes"]["warning"]
+    assert float(tags["spm_elevation_coverage"]) < 0.95
     assert flags[:, -1].all() and not flags[:, 0].any()  # no-data cells are flagged
+    # the warning stays on the map through a search update
+    sectors = tmp_path / "s.geojson"
+    sectors.write_text(json.dumps({"type": "FeatureCollection", "features": []}))
+    run(project, "update", stem.with_suffix(".tif"), "--searched", sectors)
+    with rasterio.open(stem.with_name("run_u1.tif")) as ds:
+        assert "terrain NOT used" in ds.tags()["spm_warning"]
+
+
+def test_predict_refuses_without_a_line_file(project):
+    args = predict_args(project)
+    i = args.index("--lines")
+    with pytest.raises(SystemExit, match="no trail/road file"):
+        run(project, *args[:i], *args[i + 2 :])  # data/terrain holds no osm_lines*.gpkg
+
+
+def test_predict_names_the_ring_and_refuses_a_category_without_one(project):
+    run(project, *predict_args(project))
+    with rasterio.open(project["root"] / "predictions" / "run.tif") as ds:
+        assert ds.tags()["spm_ring"] == "hiker: median 2.09 km (published table)"
+    with pytest.raises(SystemExit, match="no distance ring for category 'dementia'"):
+        run(project, *predict_args(project, category="dementia"))
+
+
+def test_pooled_ring_is_named_as_pooled():
+    ring = RingModel(quantiles=Q).fit([])
+    ring.params["__all__"], ring.n_fit["__all__"] = (1.2858, 1.2), 71
+    assert not ring.has_own_ring("dementia")
+    assert ring.describe("dementia").startswith("dementia: median 3.62 km (POOLED")
+
+
+def test_gate_b_refuses_without_holdout(project):
+    with pytest.raises(SystemExit, match="no frozen test set"):
+        run(project, "gate-b")
 
 
 def test_predict_rejects_resolution_not_multiple_of_feature_res(project):
