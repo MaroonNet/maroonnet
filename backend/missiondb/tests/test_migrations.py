@@ -82,7 +82,7 @@ def test_downgrade_base_removes_everything(migrated):
     assert _schema(migrated) == {}
 
 
-SEED = BACKEND / "missiondb" / "sample-missions" / "arizona07" / "arizona07-seed.sql"
+SEED = BACKEND / "missiondb" / "tests" / "fixtures" / "arizona07-v1-seed.sql"
 
 
 def test_arizona07_seed_loads_at_0001_and_upgrades_to_head(tmp_path, monkeypatch):

@@ -22,7 +22,7 @@ from missiondb.models import (
 )
 
 BACKEND = Path(__file__).resolve().parents[2]
-SEED = BACKEND / "missiondb" / "sample-missions" / "arizona07" / "arizona07-seed.sql"
+SEED = BACKEND / "missiondb" / "tests" / "fixtures" / "arizona07-v1-seed.sql"
 T_END = datetime(2025, 4, 14, 10, 25, tzinfo=timezone.utc)   # Arizona07 mission end
 
 
