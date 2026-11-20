@@ -5,6 +5,8 @@ Public surface:
     get_session()  a Session generator, usable as a FastAPI dependency
     init_db()      create tables from the models (dev and tests; Alembic owns real schemas)
     models         the tables; MissionBase.metadata is the schema
+    migrate        upgrade(url) / current(url): run the Alembic migrations from code
+    carryover      open_next_period(previous, new, ...): start the next operational period
 """
 
 from .db import DEFAULT_URL, create_db_engine, database_url, get_engine, get_session, init_db

@@ -14,7 +14,6 @@ from alembic import op
 import sqlalchemy as sa
 
 import missiondb.sqltypes
-from missiondb.models import DEFAULT_MESSAGE_TYPES
 
 
 # revision identifiers, used by Alembic.
@@ -182,7 +181,14 @@ def upgrade() -> None:
 
     op.bulk_insert(
         sa.table('message_type', sa.column('type_code', sa.Text), sa.column('description', sa.Text)),
-        [{'type_code': c, 'description': d} for c, d in DEFAULT_MESSAGE_TYPES],
+        # Frozen here on purpose: a migration must not change when the models' default
+        # list changes later. 0002 adds 'found'.
+        [
+            {'type_code': 'evidence', 'description': 'Searcher reports a found item'},
+            {'type_code': 'instruction', 'description': 'Commander sends an order to a team'},
+            {'type_code': 'out_of_sector', 'description': 'Team has left its sector'},
+            {'type_code': 'assignment', 'description': 'Sector assigned to a group'},
+        ],
     )
 
 
