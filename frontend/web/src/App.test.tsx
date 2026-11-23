@@ -1,12 +1,37 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 import App from './App.tsx'
 
+// A pretend MapLibre map. It records zoom presses, and a test can move it to another zoom.
+// vi.hoisted makes it before the stand-ins below, which use it.
+const fakeMap = vi.hoisted(() => {
+    let zoom = 11
+    let onMove = () => {}
+    return {
+        zoomIn: vi.fn(),
+        zoomOut: vi.fn(),
+        getZoom: () => zoom,
+        getMinZoom: () => 0,
+        getMaxZoom: () => 17,
+        getCenter: () => ({ lat: 39.74 }),  // Denver
+        on: (_event: string, listener: () => void) => { onMove = listener },
+        off: () => { onMove = () => {} },
+        moveToZoom(newZoom: number) { zoom = newZoom; onMove() },
+    }
+})
+
 // The real map needs the backend and a real browser, so the tests draw a box in its place.
-// The box prints what the map was handed, so a test can read which layers it was told to hide.
-vi.mock('./map/MissionMap.tsx', () => ({
-    default: (props: object) => <div data-testid="map">{JSON.stringify(props)}</div>,
-}))
+// The box prints the lists the map was handed, so a test can read which layers it was told
+// to hide, and it hands the pretend map up as the real one does when it is ready.
+vi.mock('./map/MissionMap.tsx', async () => {
+    const { useEffect } = await import('react')
+    type Props = { hidden: string[], pickedUses: string[], onMap: (map: unknown) => void }
+    function StandInMap({ onMap, ...lists }: Props) {
+        useEffect(() => onMap(fakeMap), [onMap])
+        return <div data-testid="map">{JSON.stringify(lists)}</div>
+    }
+    return { default: StandInMap }
+})
 
 // The style comes from the backend too. This one lists two layer groups and two trail uses.
 vi.mock('./map/mapStyle.ts', () => ({
@@ -30,7 +55,12 @@ function openLayers() {
     fireEvent.click(screen.getByRole('button', { name: 'Layers' }))
 }
 
-afterEach(cleanup)  // clear the page between tests
+// Between tests: clear the page, forget the recorded zoom presses, and put the map back.
+afterEach(() => {
+    cleanup()
+    vi.clearAllMocks()
+    fakeMap.moveToZoom(11)
+})
 
 test('the rail shows the Mission block, the nine buttons and Settings', () => {
     render(<App />)
@@ -129,4 +159,51 @@ test('keyboard focus on the Select tool shows the same tooltip', () => {
     expect(screen.getByRole('tooltip').textContent).toBe('SelectV')
     fireEvent.blur(select)
     expect(screen.queryByRole('tooltip')).toBeNull()
+})
+
+test('the zoom buttons zoom the map in and out', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
+    expect(fakeMap.zoomIn).toHaveBeenCalledOnce()
+    expect(fakeMap.zoomOut).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom out' }))
+    expect(fakeMap.zoomOut).toHaveBeenCalledOnce()
+})
+
+test('a zoom button is greyed out and does nothing at its zoom limit', () => {
+    render(<App />)
+    const greyed = (name: string) => screen.getByRole('button', { name }).getAttribute('aria-disabled') === 'true'
+    expect(greyed('Zoom in')).toBe(false)
+    expect(greyed('Zoom out')).toBe(false)
+
+    act(() => fakeMap.moveToZoom(17))  // the deepest zoom
+    expect(greyed('Zoom in')).toBe(true)
+    expect(greyed('Zoom out')).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
+    expect(fakeMap.zoomIn).not.toHaveBeenCalled()
+
+    act(() => fakeMap.moveToZoom(0))  // the widest zoom
+    expect(greyed('Zoom in')).toBe(false)
+    expect(greyed('Zoom out')).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom out' }))
+    expect(fakeMap.zoomOut).not.toHaveBeenCalled()
+})
+
+test('the scale bar shows a round distance for the map, and follows the map when it moves', () => {
+    render(<App />)
+    // Denver at zoom 11: a pixel covers 29.4 m, so 3.1 miles fit in the bar's 170 pixels.
+    expect(screen.getByTitle('Map scale').textContent).toBe('3 mi')
+    // Two zooms in, a quarter as much fits: 0.78 of a mile.
+    act(() => fakeMap.moveToZoom(13))
+    expect(screen.getByTitle('Map scale').textContent).toBe('0.5 mi')
+})
+
+test('the legend button opens the legend in its place, and the legend folds back to the button', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Show legend' }))
+    expect(screen.getByRole('heading', { name: 'Legend' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Show legend' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse legend' }))
+    expect(screen.queryByRole('heading', { name: 'Legend' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Show legend' })).toBeTruthy()
 })
