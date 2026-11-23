@@ -1,10 +1,11 @@
 import type { FilterSpecification, LayerSpecification, StyleSpecification } from 'maplibre-gl'
-import type { LayerGroup, TrailUse } from './LayerToggles'
 
 // Copies of the map style changed by the user's choices in the layer panel. The map is given the
 // copy, and MapLibre compares it with the style it is drawing and changes only what differs.
 
 // What the backend lists in the style's metadata (backend/maps/style.py).
+export type LayerGroup = { id: string, label: string }  // metadata.groups
+export type TrailUse = { id: string, label: string, filter: FilterSpecification }  // metadata.trail_uses
 export type StyleMetadata = { groups: LayerGroup[], trail_uses: TrailUse[] }
 
 // A copy of the style with the hidden groups' layers set to not show.
