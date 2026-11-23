@@ -107,3 +107,26 @@ test('the choices are kept while the panel is closed', () => {
     openLayers()
     expect((screen.getByRole('checkbox', { name: 'Contours' }) as HTMLInputElement).checked).toBe(false)
 })
+
+test('the toolbar shows the Select tool, picked', () => {
+    render(<App />)
+    expect(screen.getByRole('button', { name: 'Select' }).getAttribute('aria-pressed')).toBe('true')
+})
+
+test('hovering the Select tool shows its name and key, and leaving hides them', () => {
+    render(<App />)
+    const select = screen.getByRole('button', { name: 'Select' })
+    fireEvent.mouseEnter(select)
+    expect(screen.getByRole('tooltip').textContent).toBe('SelectV')
+    fireEvent.mouseLeave(select)
+    expect(screen.queryByRole('tooltip')).toBeNull()
+})
+
+test('keyboard focus on the Select tool shows the same tooltip', () => {
+    render(<App />)
+    const select = screen.getByRole('button', { name: 'Select' })
+    fireEvent.focus(select)
+    expect(screen.getByRole('tooltip').textContent).toBe('SelectV')
+    fireEvent.blur(select)
+    expect(screen.queryByRole('tooltip')).toBeNull()
+})
