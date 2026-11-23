@@ -1,6 +1,38 @@
+@import 'tailwindcss';
+
+/* The app's colors and sizes, each with a name. Components use the names (bg-panel, text-label,
+   w-rail), so a value is changed here once. */
+@theme {
+  --font-sans: 'Schibsted Grotesk Variable', sans-serif;  /* text */
+  --font-mono: 'Geist Mono Variable', monospace;          /* small labels and numbers */
+
+  --color-ink: #201e18;     /* text, borders, dark buttons */
+  --color-muted: #5e5a4f;   /* secondary text */
+  --color-panel: #f9f5e9;   /* panel, card and rail background */
+  --color-strip: #e9e1cb;   /* hover and header strips */
+  --color-field: #fffdf6;   /* input boxes */
+  --color-sunken: #efe7d1;  /* inset areas */
+  --color-red: oklch(0.55 0.19 27);    /* alerts and danger */
+  --color-green: oklch(0.56 0.14 150); /* completed */
+
+  --text-label: 10.5px;  /* Geist Mono, capitals */
+  --text-body: 12px;
+  --text-input: 13px;    /* inputs and emphasis */
+  --text-figure: 15px;   /* Geist Mono numbers */
+  --text-title: 17px;
+
+  --radius-control: 8px;  /* buttons and inputs */
+  --radius-box: 12px;     /* floating boxes */
+
+  --spacing-control: 32px;  /* height of a button or input */
+  --spacing-header: 58px;   /* height of the logo and of a panel's header */
+  --spacing-rail: 88px;     /* width of the rail */
+  --spacing-panel: 300px;   /* width of a panel */
+  --spacing-card: 290px;    /* width of the card */
+}
+
 html,
 body,
 #root {
   height: 100%;
-  margin: 0;
 }
