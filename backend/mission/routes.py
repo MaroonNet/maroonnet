@@ -1,22 +1,40 @@
 """The web routes for missions and sessions.
 
     GET  /api/missions             every mission in the missions folder
+    POST /api/missions             create one, in planning, and open it
     POST /api/missions/{id}/open   open one; every later request reads it
     GET  /api/mission              the open mission, or nothing
     POST /api/mission/close        leave no mission open
 """
 
-from fastapi import APIRouter
+from typing import Annotated
 
+from fastapi import APIRouter
+from pydantic import BaseModel, StringConstraints
+
+from .create import create_mission
 from .files import MissionFacts, list_missions
-from .open_mission import OpenMissionFacts, close_mission, open_mission, open_mission_facts
+from .open_mission import OpenMissionFacts, close_mission, open_folder, open_mission, open_mission_facts
+from .time_zone import TimeZoneName
 
 router = APIRouter(prefix="/api")
+
+
+class NewMission(BaseModel):
+    # The spaces around the name are dropped, and what is left is 1 to 60 characters.
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)]
+    time_zone: TimeZoneName
 
 
 @router.get("/missions")
 def get_missions() -> list[MissionFacts]:
     return list_missions()
+
+
+@router.post("/missions", status_code=201)
+def post_mission(new: NewMission) -> OpenMissionFacts:
+    open_folder(create_mission(new.name, new.time_zone))
+    return open_mission_facts()
 
 
 @router.post("/missions/{mission_id}/open")
