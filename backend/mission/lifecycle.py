@@ -9,10 +9,12 @@ paused and ended have an end time), so each change sets them together in one sav
 from datetime import datetime
 
 from fastapi import HTTPException
+from sqlalchemy import or_
 from sqlmodel import Session, select
 
 from missiondb.models import (
-    Mission, MissionStatus, SearcherCheckin, SearcherTeamAssignment, TeamGroupAssignment,
+    Mission, MissionStatus, SearcherCheckin, SearcherTeamAssignment, SearchSector, SectorAssignment,
+    SectorEntry, SectorStatus, TeamGroupAssignment,
 )
 from missiondb.sqltypes import utcnow
 
@@ -43,7 +45,9 @@ def start_mission(db: Session) -> None:
 
 def end_session(db: Session, ending: MissionStatus = MissionStatus.PAUSED) -> None:
     """Ends the active session now: paused when the mission goes on in a next session,
-    ended when End Mission was pressed. Every stretch still going is closed at the same time."""
+    ended when End Mission was pressed. Every stretch still going is closed at the same time.
+    Sectors are left as they are: a group still holds its sector while the session is
+    paused, and the next session's file receives a sector being searched as partial."""
     mission = mission_row(db)
     if mission.status != MissionStatus.ACTIVE:
         raise HTTPException(409, "Only an active session can be ended.")
@@ -56,7 +60,8 @@ def end_session(db: Session, ending: MissionStatus = MissionStatus.PAUSED) -> No
 
 def end_mission(db: Session) -> None:
     """Ends the mission. An active session is ended first; a paused one keeps the end time
-    it has."""
+    it has. Every group is taken off its sector at the session's end time, so a mission
+    that is over never shows a sector still being searched."""
     mission = mission_row(db)
     if mission.status == MissionStatus.PLANNING:
         raise HTTPException(409, "A mission in planning has not started, so it cannot be ended.")
@@ -64,8 +69,8 @@ def end_mission(db: Session) -> None:
         raise HTTPException(409, "The mission has already ended.")
     if mission.status == MissionStatus.ACTIVE:
         end_session(db, MissionStatus.ENDED)
-        return
     mission.status = MissionStatus.ENDED
+    release_sectors(db, mission.end_time)
     db.commit()
 
 
@@ -83,12 +88,64 @@ def resume_session(db: Session) -> None:
 
 
 def reopen_mission(db: Session) -> None:
-    """Undoes End Mission: the mission is paused, and keeps its end time."""
+    """Undoes End Mission: the mission is paused and keeps its end time, and each group
+    End Mission took off a sector is back on it."""
     mission = mission_row(db)
     if mission.status != MissionStatus.ENDED:
         raise HTTPException(409, "Only an ended mission can be reopened.")
+    restore_sectors(db, mission.end_time)
     mission.status = MissionStatus.PAUSED
     db.commit()
+
+
+def release_sectors(db: Session, at: datetime) -> None:
+    """Takes every group off the sector it holds, at this time. A sector being searched
+    becomes partial: searched in part, with nobody on it now."""
+    for hold in db.exec(select(SectorAssignment).where(SectorAssignment.to_time.is_(None))):
+        hold.to_time = at
+        sector = db.get(SearchSector, hold.search_sector_id)
+        if sector.status == SectorStatus.SEARCHING:
+            sector.status = SectorStatus.PARTIAL
+
+
+def restore_sectors(db: Session, ended_at: datetime) -> None:
+    """Puts back each group whose hold on a sector ended at exactly this time, which are
+    the holds End Mission ended. A partial sector is searching again if a team of the
+    group had entered it during the hold; one held and not yet entered stays partial."""
+    newest_first = (
+        select(SectorAssignment).where(SectorAssignment.to_time == ended_at)
+        .order_by(SectorAssignment.assignment_id.desc())
+    )
+    sectors_held, groups_holding = set(), set()
+    for hold in db.exec(newest_first):
+        # A sector has one group and a group one sector. If two holds ended in the same
+        # second, only the newer is put back.
+        if hold.search_sector_id in sectors_held or hold.search_group_id in groups_holding:
+            continue
+        sectors_held.add(hold.search_sector_id)
+        groups_holding.add(hold.search_group_id)
+        hold.to_time = None
+        sector = db.get(SearchSector, hold.search_sector_id)
+        if sector.status == SectorStatus.PARTIAL and entered_during(db, hold):
+            sector.status = SectorStatus.SEARCHING
+
+
+def entered_during(db: Session, hold: SectorAssignment) -> bool:
+    """Whether a radio entered the hold's sector after the hold began, while that radio was
+    in the group holding it."""
+    in_group = TeamGroupAssignment
+    entry = db.exec(
+        select(SectorEntry)
+        .join(in_group, in_group.team_id == SectorEntry.team_id)
+        .where(
+            SectorEntry.search_sector_id == hold.search_sector_id,
+            SectorEntry.entered_time >= hold.from_time,
+            in_group.search_group_id == hold.search_group_id,
+            in_group.from_time <= SectorEntry.entered_time,
+            or_(in_group.to_time.is_(None), in_group.to_time >= SectorEntry.entered_time),
+        )
+    ).first()
+    return entry is not None
 
 
 def change_time_zone(db: Session, time_zone: str) -> None:

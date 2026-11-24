@@ -2,7 +2,7 @@
 
 import pytest
 
-from .conftest import ARIZONA07_ID, add_teams, rows
+from .conftest import ARIZONA07_ID, add_sectors, add_teams, rows, utc
 
 MISSION = "SELECT status, start_time, end_time FROM mission"
 STARTED = "2026-11-20T15:00:00Z"
@@ -154,6 +154,72 @@ def test_a_mistaken_end_mission_is_undone_by_reopen_then_resume(client, open_bea
 
     assert rows(file, MISSION) == [("active", STARTED, None)]
     assert teams(file) == before
+
+
+# Sectors a group still holds. End Session leaves them alone; End Mission takes each group
+# off its sector; Reopen puts them back.
+
+SECTOR_TABLES = {
+    "sectors": "SELECT name, status FROM search_sector ORDER BY search_sector_id",
+    "holds": "SELECT search_sector_id, search_group_id, to_time FROM sector_assignment ORDER BY assignment_id",
+}
+SECTORS_BEFORE = {
+    "sectors": [("S1", "searching"), ("S2", "drawn"), ("S3", "partial"), ("S4", "drawn"), ("S5", "completed")],
+    "holds": [(5, 1, "2026-11-20T15:05:00Z"), (3, 3, "2026-11-20T15:08:00Z"), (1, 1, None), (2, 2, None), (3, 3, None)],
+}
+
+
+def sectors(file) -> dict:
+    return {table: rows(file, sql) for table, sql in SECTOR_TABLES.items()}
+
+
+def released_at(time) -> dict:
+    """The sectors once every group has been taken off: the searching one is partial, and
+    each hold that was going ended at this time. Earlier holds keep their own end."""
+    return {
+        "sectors": [("S1", "partial"), ("S2", "drawn"), ("S3", "partial"), ("S4", "drawn"), ("S5", "completed")],
+        "holds": [(5, 1, "2026-11-20T15:05:00Z"), (3, 3, "2026-11-20T15:08:00Z"), (1, 1, time), (2, 2, time), (3, 3, time)],
+    }
+
+
+@pytest.fixture
+def mid_search(open_bear_creek):
+    file = open_bear_creek("active")
+    add_teams(file)
+    add_sectors(file)
+    assert sectors(file) == SECTORS_BEFORE
+    return file
+
+
+def test_end_session_leaves_sectors_and_the_groups_holding_them_alone(client, mid_search):
+    client.post("/api/mission/end-session")
+
+    assert sectors(mid_search) == SECTORS_BEFORE
+
+
+def test_end_mission_takes_each_group_off_its_sector_and_a_searching_sector_becomes_partial(client, mid_search):
+    client.post("/api/mission/end")
+
+    assert sectors(mid_search) == released_at(PRESSED)
+
+
+def test_end_mission_on_a_paused_session_takes_the_groups_off_at_the_time_the_session_ended(client, mid_search, clock):
+    client.post("/api/mission/end-session")  # at the stopped clock's time
+    clock.set(utc(2026, 11, 21, 9))          # the next morning
+
+    client.post("/api/mission/end")
+
+    assert sectors(mid_search) == released_at(PRESSED)
+
+
+def test_reopen_puts_each_group_back_on_its_sector_as_it_was(client, mid_search):
+    client.post("/api/mission/end")
+
+    client.post("/api/mission/reopen")
+
+    # S1 is searching again because radio 1 had entered it. S3 was held and not yet
+    # entered, so it is partial as before.
+    assert sectors(mid_search) == SECTORS_BEFORE
 
 
 def test_arizona07_reopened_and_resumed_has_its_teams_as_the_night_ended(client, arizona07):

@@ -166,3 +166,33 @@ def add_teams(path: Path) -> None:
                 (3, '2026-11-20T16:00:00Z', NULL);
         """)
         connection.commit()
+
+
+def add_sectors(path: Path) -> None:
+    """Puts sectors in a mission file that add_teams has filled, each held a different way:
+
+        S1  searching  held by group 1, whose radio 1 entered it after the group took it
+        S2  drawn      held by group 2, not yet entered
+        S3  partial    held by group 3 a second time, and not yet entered this time
+        S4  drawn      held by nobody
+        S5  completed  group 1 held it until 3:05 pm
+    """
+    with closing(sqlite3.connect(path)) as connection:
+        connection.executescript("""
+            INSERT INTO search_group (search_group_id) VALUES (2), (3);
+            INSERT INTO search_sector (search_sector_id, name, status, created_time, completed_time) VALUES
+                (1, 'S1', 'searching', '2026-11-20T15:00:00Z', NULL),
+                (2, 'S2', 'drawn', '2026-11-20T15:00:00Z', NULL),
+                (3, 'S3', 'partial', '2026-11-20T15:00:00Z', NULL),
+                (4, 'S4', 'drawn', '2026-11-20T15:00:00Z', NULL),
+                (5, 'S5', 'completed', '2026-11-20T15:00:00Z', '2026-11-20T15:05:00Z');
+            INSERT INTO sector_assignment (search_sector_id, search_group_id, from_time, to_time) VALUES
+                (5, 1, '2026-11-20T15:01:00Z', '2026-11-20T15:05:00Z'),
+                (3, 3, '2026-11-20T15:01:00Z', '2026-11-20T15:08:00Z'),
+                (1, 1, '2026-11-20T15:10:00Z', NULL),
+                (2, 2, '2026-11-20T15:10:00Z', NULL),
+                (3, 3, '2026-11-20T15:20:00Z', NULL);
+            INSERT INTO sector_entry (team_id, search_sector_id, entered_time) VALUES
+                (1, 1, '2026-11-20T15:30:00Z');
+        """)
+        connection.commit()
