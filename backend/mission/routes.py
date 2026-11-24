@@ -5,16 +5,23 @@
     POST /api/missions/{id}/open   open one; every later request reads it
     GET  /api/mission              the open mission, or nothing
     POST /api/mission/close        leave no mission open
+    POST /api/mission/start        Start Mission: planning to active
+
+Each route that changes the open mission answers with its facts as they now are.
 """
 
 from typing import Annotated
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, StringConstraints
+from sqlmodel import Session
 
+from . import lifecycle
 from .create import create_mission
 from .files import MissionFacts, list_missions
-from .open_mission import OpenMissionFacts, close_mission, open_folder, open_mission, open_mission_facts
+from .open_mission import (
+    OpenMissionFacts, close_mission, mission_session, open_folder, open_mission, open_mission_facts,
+)
 from .time_zone import TimeZoneName
 
 router = APIRouter(prefix="/api")
@@ -51,3 +58,9 @@ def get_mission() -> OpenMissionFacts | None:
 @router.post("/mission/close", status_code=204)
 def post_close() -> None:
     close_mission()
+
+
+@router.post("/mission/start")
+def post_start(db: Session = Depends(mission_session)) -> OpenMissionFacts:
+    lifecycle.start_mission(db)
+    return open_mission_facts()

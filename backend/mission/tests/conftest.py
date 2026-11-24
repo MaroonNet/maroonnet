@@ -95,3 +95,73 @@ def make_mission(missions_dir, empty_file):
 @pytest.fixture
 def client() -> TestClient:
     return TestClient(app)
+
+
+BEAR_CREEK_ID = "11111111-2222-3333-4444-555555555555"
+START = utc(2026, 11, 20, 15)   # when the made-up mission's session started
+NOW = utc(2026, 11, 20, 23, 30)  # what the clock reads when a test presses a button
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    """Stops the backend's clock at NOW. A test moves it with clock.set(...)."""
+    from mission import lifecycle
+
+    class Clock:
+        def set(self, time: datetime) -> None:
+            monkeypatch.setattr(lifecycle, "utcnow", lambda: time)
+
+    stopped = Clock()
+    stopped.set(NOW)
+    return stopped
+
+
+@pytest.fixture
+def open_bear_creek(client, make_mission, clock):
+    """Makes Bear Creek with one session in the status asked for, opens it, and answers
+    with its file."""
+
+    def make(status: str = "planning", **facts) -> Path:
+        times = {
+            "planning": {},
+            "active": {"start": START},
+            "paused": {"start": START, "end": utc(2026, 11, 20, 22)},
+            "ended": {"start": START, "end": utc(2026, 11, 20, 22)},
+        }[status]
+        path = make_mission("bear-creek/session-01.sqlite3", status=status, **(times | facts))
+        client.post(f"/api/missions/{BEAR_CREEK_ID}/open")
+        return path
+
+    return make
+
+
+def rows(path: Path, sql: str) -> list[tuple]:
+    """What a query finds in a mission file."""
+    with closing(sqlite3.connect(path)) as connection:
+        return connection.execute(sql).fetchall()
+
+
+def add_teams(path: Path) -> None:
+    """Puts people on radios in a mission file: searchers 1 and 2 carry radio 1, which is in
+    group 1; searcher 3 carries radio 2, which is in no group. All three are checked in.
+    Each table also has one row that ended at 4 pm, before the session's end."""
+    with closing(sqlite3.connect(path)) as connection:
+        connection.executescript("""
+            INSERT INTO team (team_id, node_num) VALUES (1, 101), (2, 102);
+            INSERT INTO searcher (searcher_id, fname, lname) VALUES (1, 'Ana', 'Ruiz'), (2, 'Ben', 'Cho'), (3, 'Cy', 'Dunn');
+            INSERT INTO search_group (search_group_id) VALUES (1);
+            INSERT INTO searcher_team_assignment (searcher_id, team_id, from_time, to_time) VALUES
+                (3, 1, '2026-11-20T15:00:00Z', '2026-11-20T16:00:00Z'),
+                (1, 1, '2026-11-20T15:00:00Z', NULL),
+                (2, 1, '2026-11-20T15:00:00Z', NULL),
+                (3, 2, '2026-11-20T16:00:00Z', NULL);
+            INSERT INTO team_group_assignment (team_id, search_group_id, from_time, to_time) VALUES
+                (2, 1, '2026-11-20T15:00:00Z', '2026-11-20T16:00:00Z'),
+                (1, 1, '2026-11-20T15:00:00Z', NULL);
+            INSERT INTO searcher_checkin (searcher_id, in_time, out_time) VALUES
+                (3, '2026-11-20T14:00:00Z', '2026-11-20T16:00:00Z'),
+                (1, '2026-11-20T15:00:00Z', NULL),
+                (2, '2026-11-20T15:00:00Z', NULL),
+                (3, '2026-11-20T16:00:00Z', NULL);
+        """)
+        connection.commit()
