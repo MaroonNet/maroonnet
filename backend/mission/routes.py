@@ -10,6 +10,7 @@
     POST /api/mission/end          End Mission: active or paused to ended
     POST /api/mission/resume       undo End Session: paused to active
     POST /api/mission/reopen       undo End Mission: ended to paused
+    POST /api/mission/next-session start the session after a paused one, in a new file
 
 Each route that changes the open mission answers with its facts as they now are.
 """
@@ -23,8 +24,10 @@ from sqlmodel import Session
 from . import lifecycle
 from .create import create_mission
 from .files import MissionFacts, list_missions
+from .next_session import start_next_session
 from .open_mission import (
-    OpenMissionFacts, close_mission, mission_session, open_folder, open_mission, open_mission_facts,
+    OpenMission, OpenMissionFacts, close_mission, mission_session, open_folder, open_mission,
+    open_mission_facts, require_open_mission,
 )
 from .time_zone import TimeZoneName
 
@@ -91,4 +94,15 @@ def post_resume(db: Session = Depends(mission_session)) -> OpenMissionFacts:
 @router.post("/mission/reopen")
 def post_reopen(db: Session = Depends(mission_session)) -> OpenMissionFacts:
     lifecycle.reopen_mission(db)
+    return open_mission_facts()
+
+
+class NextSession(BaseModel):
+    keep_teams: bool  # true: keep teams as they ended; false: start with no teams
+
+
+@router.post("/mission/next-session", status_code=201)
+def post_next_session(choice: NextSession, last: OpenMission = Depends(require_open_mission)) -> OpenMissionFacts:
+    start_next_session(last, choice.keep_teams)
+    open_folder(last.folder)  # the new session is now the mission's latest, so it is the one opened
     return open_mission_facts()
