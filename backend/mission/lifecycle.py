@@ -91,6 +91,16 @@ def reopen_mission(db: Session) -> None:
     db.commit()
 
 
+def change_time_zone(db: Session, time_zone: str) -> None:
+    """Changes the zone the mission's times are shown in. No saved time changes. The change
+    is saved in the open session's file; an earlier session's file keeps the zone it had."""
+    mission = mission_row(db)
+    if mission.status == MissionStatus.ENDED:
+        raise HTTPException(409, "The mission has ended, so its time zone cannot be changed.")
+    mission.time_zone = time_zone
+    db.commit()
+
+
 def close_stretches(db: Session, now: datetime) -> None:
     for table, end, _ in STRETCH_TABLES:
         for row in db.exec(select(table).where(getattr(table, end).is_(None))):

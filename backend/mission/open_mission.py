@@ -28,12 +28,15 @@ class OpenMission:
     folder: Path    # the mission's folder
     file: Path      # the open session's file
     engine: Engine  # the connection to that file
+    # The backend started and found this mission's session still active, and the commander
+    # has not yet said whether to continue it.
+    asks_to_continue: bool = False
 
 
 class OpenMissionFacts(MissionFacts):
     """The open mission as the web app reads it."""
 
-    asks_to_continue: bool = False
+    asks_to_continue: bool  # the web app is to ask "Continue" or "End Session now"
 
 
 _open: OpenMission | None = None
@@ -72,14 +75,23 @@ def close_mission(forget: bool = True) -> None:
 
 def reopen_last_mission() -> None:
     """Run when the backend starts: opens the mission that was open when it last ran. If
-    that mission is no longer in the missions folder, none is open."""
+    that mission is no longer in the missions folder, none is open. If its session is still
+    active, the backend stopped while it was running, so the commander is asked about it."""
     last = read_settings().last_mission
     if last is None:
         return
     try:
-        open_mission(last)
+        opened = open_mission(last)
     except HTTPException:
         print(f"MISSION the last mission opened ({last}) is no longer in the missions folder", flush=True)
+        return
+    with Session(opened.engine) as db:
+        opened.asks_to_continue = db.exec(select(Mission.status)).one() == MissionStatus.ACTIVE
+
+
+def answer_continue() -> None:
+    """The commander chose to continue the session that was still active."""
+    require_open_mission().asks_to_continue = False
 
 
 def get_open_mission() -> OpenMission | None:
@@ -98,7 +110,9 @@ def open_mission_facts() -> OpenMissionFacts | None:
     if _open is None:
         return None
     facts = facts_from(session_files(_open.folder))
-    return OpenMissionFacts(**facts.model_dump())
+    # Once the session is no longer active there is nothing left to ask.
+    asks = _open.asks_to_continue and facts.status == MissionStatus.ACTIVE
+    return OpenMissionFacts(**facts.model_dump(), asks_to_continue=asks)
 
 
 def mission_session() -> Iterator[Session]:

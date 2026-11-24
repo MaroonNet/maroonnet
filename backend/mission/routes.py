@@ -4,7 +4,9 @@
     POST /api/missions             create one, in planning, and open it
     POST /api/missions/{id}/open   open one; every later request reads it
     GET  /api/mission              the open mission, or nothing
+    PATCH /api/mission             change its time zone
     POST /api/mission/close        leave no mission open
+    POST /api/mission/continue     the answer "Continue" for a session found still active
     POST /api/mission/start        Start Mission: planning to active
     POST /api/mission/end-session  End Session: active to paused
     POST /api/mission/end          End Mission: active or paused to ended
@@ -18,7 +20,7 @@ Each route that changes the open mission answers with its facts as they now are.
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel, ConfigDict, StringConstraints
 from sqlmodel import Session
 
 from . import lifecycle
@@ -26,8 +28,8 @@ from .create import create_mission
 from .files import MissionFacts, list_missions
 from .next_session import start_next_session
 from .open_mission import (
-    OpenMission, OpenMissionFacts, close_mission, mission_session, open_folder, open_mission,
-    open_mission_facts, require_open_mission,
+    OpenMission, OpenMissionFacts, answer_continue, close_mission, mission_session, open_folder,
+    open_mission, open_mission_facts, require_open_mission,
 )
 from .time_zone import TimeZoneName
 
@@ -62,9 +64,28 @@ def get_mission() -> OpenMissionFacts | None:
     return open_mission_facts()
 
 
+class MissionChange(BaseModel):
+    """What a request may change about the open mission: its time zone."""
+
+    model_config = ConfigDict(extra="forbid")  # any other name is refused, not ignored
+    time_zone: TimeZoneName
+
+
+@router.patch("/mission")
+def patch_mission(change: MissionChange, db: Session = Depends(mission_session)) -> OpenMissionFacts:
+    lifecycle.change_time_zone(db, change.time_zone)
+    return open_mission_facts()
+
+
 @router.post("/mission/close", status_code=204)
 def post_close() -> None:
     close_mission()
+
+
+@router.post("/mission/continue")
+def post_continue() -> OpenMissionFacts:
+    answer_continue()
+    return open_mission_facts()
 
 
 @router.post("/mission/start")
