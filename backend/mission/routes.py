@@ -6,6 +6,10 @@
     GET  /api/mission              the open mission, or nothing
     POST /api/mission/close        leave no mission open
     POST /api/mission/start        Start Mission: planning to active
+    POST /api/mission/end-session  End Session: active to paused
+    POST /api/mission/end          End Mission: active or paused to ended
+    POST /api/mission/resume       undo End Session: paused to active
+    POST /api/mission/reopen       undo End Mission: ended to paused
 
 Each route that changes the open mission answers with its facts as they now are.
 """
@@ -63,4 +67,28 @@ def post_close() -> None:
 @router.post("/mission/start")
 def post_start(db: Session = Depends(mission_session)) -> OpenMissionFacts:
     lifecycle.start_mission(db)
+    return open_mission_facts()
+
+
+@router.post("/mission/end-session")
+def post_end_session(db: Session = Depends(mission_session)) -> OpenMissionFacts:
+    lifecycle.end_session(db)
+    return open_mission_facts()
+
+
+@router.post("/mission/end")
+def post_end(db: Session = Depends(mission_session)) -> OpenMissionFacts:
+    lifecycle.end_mission(db)
+    return open_mission_facts()
+
+
+@router.post("/mission/resume")
+def post_resume(db: Session = Depends(mission_session)) -> OpenMissionFacts:
+    lifecycle.resume_session(db)
+    return open_mission_facts()
+
+
+@router.post("/mission/reopen")
+def post_reopen(db: Session = Depends(mission_session)) -> OpenMissionFacts:
+    lifecycle.reopen_mission(db)
     return open_mission_facts()
