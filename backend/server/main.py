@@ -35,7 +35,7 @@ def health():
 
 
 class ClientMessage(BaseModel):
-    kind: str    # what went wrong: "error", "rejection", "map", "style" or "settings"
+    kind: str    # what went wrong: "error", "rejection", "map", "style", "settings" or "mission"
     detail: str  # the error's message
 
 

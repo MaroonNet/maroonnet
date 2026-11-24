@@ -8,6 +8,8 @@ import LayersPanel from './layers/LayersPanel.tsx'
 import MissionMap from './map/MissionMap.tsx'
 import { style } from './map/mapStyle.ts'
 import type { StyleMetadata } from './map/styleChoices.ts'
+import MissionPanel from './mission/MissionPanel.tsx'
+import StillRunningBox from './mission/StillRunningBox.tsx'
 import SettingsPanel from './settings/SettingsPanel.tsx'
 
 // The whole screen: the rail down the left edge, the panel its buttons open, and the map
@@ -32,6 +34,11 @@ function App() {
   return (
     <div className="relative flex h-full font-sans text-body leading-snug font-semibold text-ink">
       <Rail openPanel={openPanel} onPress={pressRailButton} />
+      {openPanel === 'mission' && (
+        <Panel title="Mission" onClose={() => setOpenPanel(null)}>
+          <MissionPanel />
+        </Panel>
+      )}
       {openPanel === 'layers' && (
         <Panel title="Map Layers" onClose={() => setOpenPanel(null)}>
           {layerLists ? (
@@ -62,6 +69,7 @@ function App() {
         </div>
         {map && <MapControls map={map} />}
       </main>
+      <StillRunningBox />
     </div>
   )
 }

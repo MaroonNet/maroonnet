@@ -2,9 +2,10 @@ import {
     IconAccessPoint, IconAlertTriangle, IconMap, IconMarquee2, IconPolygon, IconReport,
     IconSettings, IconStack2, IconUser, IconUsersGroup, type Icon,
 } from '@tabler/icons-react'
+import { dayAndSession, STATUS_LABELS, useMission } from '../mission/mission.ts'
 
 // The panels a rail button can open.
-export type PanelId = 'teams' | 'people' | 'sectors' | 'area' | 'alerts' | 'mesh' | 'layers' | 'maps' | 'aar' | 'settings'
+export type PanelId = 'mission' | 'teams' | 'people' | 'sectors' | 'area' | 'alerts' | 'mesh' | 'layers' | 'maps' | 'aar' | 'settings'
 
 // built: the button's panel exists. The rest are greyed out until their panel is built.
 const BUTTONS: { id: PanelId, label: string, icon: Icon, built: boolean }[] = [
@@ -37,10 +38,7 @@ function Rail({ openPanel, onPress }: Props) {
                 <div className="text-figure font-bold tracking-widest">MN</div>
                 <div className="font-mono text-label font-medium tracking-widest">COMMAND</div>
             </div>
-            <button type="button" {...NOT_YET} className={`flex-none border-b border-ink px-2 py-2.5 text-center ${GREYED}`}>
-                <div className="font-bold">Mission</div>
-                <div className="mt-1 font-mono">+ New</div>
-            </button>
+            <MissionBlock open={openPanel === 'mission'} onPress={() => onPress('mission')} />
             {BUTTONS.map((button) => (
                 <RailButton
                     key={button.id}
@@ -65,6 +63,26 @@ function Rail({ openPanel, onPress }: Props) {
                 />
             </div>
         </nav>
+    )
+}
+
+// The block under the logo. It names the open mission with its day and session, or its
+// status while it is in planning, and reads "Mission + New" with none open. Pressing it
+// opens the Mission panel.
+function MissionBlock({ open, onPress }: { open: boolean, onPress: () => void }) {
+    const { mission } = useMission()
+    const line = !mission ? '+ New' : mission.status === 'planning' ? STATUS_LABELS.planning : dayAndSession(mission)
+    return (
+        <button
+            type="button"
+            aria-pressed={open}
+            aria-label={mission ? `Mission: ${mission.name}, ${line}` : undefined}
+            onClick={onPress}
+            className={`flex-none cursor-pointer border-b border-ink px-2 py-2.5 text-center ${open ? 'bg-ink text-panel' : 'hover:bg-strip'}`}
+        >
+            <div className="font-bold wrap-break-word">{mission ? mission.name : 'Mission'}</div>
+            <div className="mt-1 font-mono text-label">{line}</div>
+        </button>
     )
 }
 
