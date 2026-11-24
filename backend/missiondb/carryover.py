@@ -12,16 +12,19 @@ Two halves, deliberately separate:
 
   open_next_period  HOW it is carried. These rules hold whatever the policy says:
                     - both files are at the current schema (migrated if not);
-                    - the new file is a fresh mission row: same uuid and name,
-                      operational_period + 1, no end_time;
+                    - the new file is a fresh mission row: same uuid, name and time
+                      zone, operational_period + 1, no end_time; it is 'active' from
+                      start_time, or 'planning' with no start_time if asked;
                     - carried rows keep their ids, so sector 3 is the same shape in every
                       period's file, the phone's assignment id stays stable, and new rows
                       continue the numbering;
                     - a period's own history is never carried: location, message,
-                      sector_entry, sector_dispatch, and the three assignment tables;
-                    - a carried 'searching' sector arrives 'drawn' (its assignment stayed
-                      behind), and a carried waypoint whose message or radio stayed behind
-                      is unlinked, not dropped;
+                      sector_entry, sector_dispatch, searcher_checkin, and the three
+                      assignment tables;
+                    - a carried 'searching' sector arrives 'partial' (searched in part; its
+                      assignment stayed behind), a 'partial' one stays 'partial', and a
+                      carried waypoint whose message or radio stayed behind is unlinked,
+                      not dropped;
                     - the previous file is not modified (beyond migration), the new file
                       is refused if it already holds a mission, and foreign keys are
                       checked before returning.
@@ -42,6 +45,7 @@ from .migrate import current, head_revision, upgrade
 from .models import (
     MessageType,
     Mission,
+    MissionStatus,
     SearchArea,
     Searcher,
     SearchGroup,
@@ -67,11 +71,12 @@ class CarryoverPolicy:
     groups: Iterable[int] | None = ()       # ids to carry; default none (rebuilt each period)
     search_area: bool = True                # always static for a mission
     completed_sectors: bool = True          # history worth seeing on the map
-    open_sectors: bool = True               # drawn or searching; arrive 'drawn'
+    open_sectors: bool = True               # drawn, searching or partial; see the rules above
     waypoints: bool = True                  # every waypoint, removed ones included
     removed_waypoints: bool = True          # set False to carry only the ones still on the map
     custom_types: bool = True               # message_type / waypoint_type rows the team added
     start_time: datetime | None = None      # the new period's start; None = now
+    planning: bool = False                  # True: open the period as 'planning', not started
 
 
 @dataclass
@@ -82,7 +87,7 @@ class CarryoverReport:
     groups: int = 0
     sectors: int = 0
     sector_points: int = 0
-    sectors_reopened: list[int] = field(default_factory=list)  # were 'searching', now 'drawn'
+    sectors_reopened: list[int] = field(default_factory=list)  # were 'searching', now 'partial'
     waypoints: int = 0
     waypoints_unlinked: int = 0  # lost their message_id / team_id because those stayed behind
 
@@ -139,7 +144,9 @@ def open_next_period(
                 mission_uuid=old.mission_uuid,
                 name=old.name,
                 operational_period=report.operational_period,
-                start_time=policy.start_time or utcnow(),
+                time_zone=old.time_zone,
+                status=MissionStatus.PLANNING if policy.planning else MissionStatus.ACTIVE,
+                start_time=None if policy.planning else (policy.start_time or utcnow()),
             ))
 
             if policy.search_area:
@@ -163,7 +170,7 @@ def open_next_period(
             carried_team_ids: set[int] = set()
             for t in src.exec(select(Team)):
                 if keep is None or t.team_id in keep:
-                    dst.add(_copy(t, active=False))
+                    dst.add(_copy(t, active=False))  # kind is kept; the commander may change it
                     carried_team_ids.add(t.team_id)
                     report.teams += 1
 
@@ -184,7 +191,7 @@ def open_next_period(
                     continue
                 status = sector.status
                 if status == SectorStatus.SEARCHING:
-                    status = SectorStatus.DRAWN
+                    status = SectorStatus.PARTIAL
                     report.sectors_reopened.append(sector.search_sector_id)
                 dst.add(_copy(sector, status=status))
                 carried_sector_ids.add(sector.search_sector_id)

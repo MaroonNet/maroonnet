@@ -111,6 +111,11 @@ def test_arizona07_seed_loads_at_0001_and_upgrades_to_head(tmp_path, monkeypatch
             "SELECT search_sector_id, search_group_id, to_time IS NULL FROM sector_assignment ORDER BY 1"
         ).fetchall() == [(1, 1, 0), (2, 3, 0), (3, 2, 0), (4, 3, 0)]
         assert "search_group_id" not in [r[1] for r in conn.execute("PRAGMA table_info(search_sector)")]
+        # 0003 fills its new columns from what the file already says
+        assert conn.execute("SELECT status, time_zone FROM mission").fetchone() == ("ended", "UTC")
+        assert conn.execute("SELECT DISTINCT kind FROM team").fetchall() == [("searcher",)]
+        assert conn.execute("SELECT DISTINCT addressing, batch_id FROM message").fetchall() == [("direct", None)]
+        assert {"point_last_seen", "other"} <= {r[0] for r in conn.execute("SELECT type_code FROM waypoint_type")}
     assert _schema(path) == _schema(_create_all(tmp_path))
 
 
@@ -126,6 +131,60 @@ def test_arizona07_downgrade_restores_group_column(tmp_path, monkeypatch):
     command.downgrade(cfg, "0001")
     with sqlite3.connect(path) as conn:
         assert conn.execute("SELECT search_sector_id, search_group_id FROM search_sector ORDER BY 1").fetchall() == before
+
+
+SAMPLE = BACKEND / "missiondb" / "sample-missions" / "arizona07" / "arizona07-seed.sql"
+SAMPLE_REVISION = "0003"   # the revision sample-missions/README.md builds the file at
+
+
+def test_arizona07_sample_builds_the_documented_way(tmp_path, monkeypatch):
+    """sample-missions/README.md: upgrade to the seed's revision, load the seed, upgrade head.
+    A new migration must keep this working, or the seed and the README move with it."""
+    path = tmp_path / "day-01.sqlite3"
+    monkeypatch.setenv("MISSIONDB_URL", f"sqlite:///{path}")
+    cfg = _alembic_config()
+    command.upgrade(cfg, SAMPLE_REVISION)
+    with sqlite3.connect(path) as conn:
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.executescript(SAMPLE.read_text())
+    before = _row_counts(path)
+    command.upgrade(cfg, "head")
+    assert {t: n for t, n in _row_counts(path).items() if t in before} == before, "rows lost or gained"
+    with sqlite3.connect(path) as conn:
+        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+        assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        assert conn.execute("SELECT name, status, time_zone FROM mission").fetchone() == (
+            "Arizona07", "ended", "America/Phoenix")
+        assert (before["location"], before["team"], before["searcher"], before["searcher_checkin"]) == (
+            10432, 8, 21, 21)
+        assert conn.execute("SELECT kind, count(*) FROM team GROUP BY kind ORDER BY kind").fetchall() == [
+            ("command_post", 1), ("relay", 1), ("searcher", 6)]
+        assert conn.execute("SELECT name FROM search_sector WHERE status = 'partial' ORDER BY 1").fetchall() == [
+            ("S4",), ("S6",)]
+        assert conn.execute(
+            "SELECT addressing, count(*), count(ack_time) FROM message GROUP BY addressing ORDER BY addressing"
+        ).fetchall() == [("broadcast", 6, 6), ("direct", 5, 2), ("multicast", 2, 2)]
+    assert _schema(path) == _schema(_create_all(tmp_path))
+
+
+def test_downgrade_0003_keeps_the_rows(tmp_path, monkeypatch):
+    path = tmp_path / "m.sqlite3"
+    monkeypatch.setenv("MISSIONDB_URL", f"sqlite:///{path}")
+    cfg = _alembic_config()
+    command.upgrade(cfg, "head")
+    with sqlite3.connect(path) as conn:
+        conn.execute("INSERT INTO mission (mission_id, mission_uuid, name) VALUES (1, 'u', 'planned')")
+        conn.execute("INSERT INTO search_sector (name, status, created_time) VALUES ('S1', 'partial', '2026-11-24T00:00:00Z')")
+        conn.execute("INSERT INTO team (node_num, kind) VALUES (7, 'relay')")
+    command.downgrade(cfg, "0002")
+    with sqlite3.connect(path) as conn:
+        name, start = conn.execute("SELECT name, start_time FROM mission").fetchone()
+        assert name == "planned" and start is not None     # 0002 requires a start_time
+        assert conn.execute("SELECT status FROM search_sector").fetchone() == ("searching",)
+        assert conn.execute("SELECT node_num FROM team").fetchone() == (7,)
+        assert "searcher_checkin" not in {r[0] for r in conn.execute("SELECT name FROM sqlite_master")}
+    command.upgrade(cfg, "head")
+    assert _schema(path) == _schema(_create_all(tmp_path))
 
 
 def _row_counts(path: Path) -> dict[str, int]:
