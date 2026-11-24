@@ -5,10 +5,12 @@ from pydantic import BaseModel
 
 from maps.routes import router as maps_router
 from mapdb.routes import router as spm_router
+from settings.routes import router as settings_router
 
 app = FastAPI()
 app.include_router(maps_router)
 app.include_router(spm_router)
+app.include_router(settings_router)
 
 @app.get("/api/health")
 def health():
@@ -16,7 +18,7 @@ def health():
 
 
 class ClientMessage(BaseModel):
-    kind: str    # what went wrong: "error", "rejection", "map" or "style"
+    kind: str    # what went wrong: "error", "rejection", "map", "style" or "settings"
     detail: str  # the error's message
 
 
