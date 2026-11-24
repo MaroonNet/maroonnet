@@ -3,9 +3,7 @@
 import json
 import re
 
-from pmtiles.tile import Compression, TileType
-
-from maps.routes import TERRAIN_SETTING, is_asset_name
+from maps.routes import is_asset_name
 
 ORIGIN = "http://testserver"  # the address the test client sends its requests to
 
@@ -87,21 +85,17 @@ def test_asset_names_stay_inside_their_folder():
         assert not is_asset_name(name), name
 
 
-def test_terrain_max_zoom_comes_from_the_pack(make_pack, client, monkeypatch):
-    # A made-up terrain pack whose last zoom is 14, like the POC's.
-    monkeypatch.setenv(TERRAIN_SETTING, make_pack({(14, 0, 0): b"tile"}, TileType.WEBP, Compression.NONE))
-    assert get_style(client)["sources"]["terrain"]["maxzoom"] == 14
-
-
-def test_terrain_max_zoom_without_a_pack(client, monkeypatch):
-    monkeypatch.delenv(TERRAIN_SETTING, raising=False)
+def test_terrain_max_zoom_is_the_deepest_installed_terrain(install_pack, client):
+    # Each pack's last zoom is read from its map file, not from its pack.json.
+    install_pack("state/CO/terrain", {(12, 852, 1554): b"tile"})
     assert get_style(client)["sources"]["terrain"]["maxzoom"] == 12
+    install_pack("mission/brainard-lake", {(16, 13636, 24868): b"tile"})
+    assert get_style(client)["sources"]["terrain"]["maxzoom"] == 16
 
 
-def test_style_survives_a_bad_terrain_pack(tmp_path, client, monkeypatch):
-    junk = tmp_path / "junk.pmtiles"
-    junk.write_bytes(b"not a pack")
-    monkeypatch.setenv(TERRAIN_SETTING, str(junk))
+def test_terrain_max_zoom_without_a_terrain_pack(install_pack, client):
+    assert get_style(client)["sources"]["terrain"]["maxzoom"] == 12
+    install_pack("state/CO/basemap", {(14, 3409, 6217): b"tile"})  # a basemap does not count
     assert get_style(client)["sources"]["terrain"]["maxzoom"] == 12
 
 

@@ -1,6 +1,7 @@
 """The packs installed in the maps folder, found once when the server starts (spec 8.3)."""
 
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 from .pack_info import PackInfo, read_pack_info
@@ -57,6 +58,20 @@ class InstalledPack:
 # The installed packs, by id. Filled once when the server starts: packs are not copied in by hand
 # for now (spec section 2). Deleting (plan 2.6) and downloading (5.6) will change it.
 installed: dict[str, InstalledPack] = {}
+
+
+def packs_to_ask(contents: str) -> list[Pack]:
+    """The open packs that hold basemap or terrain tiles, in the order to ask them for a tile
+    (spec 8.4): mission packs before state packs, and newer map data before older. The first
+    pack that has the tile answers."""
+    entries = [entry for entry in installed.values() if entry.info.contents == contents]
+
+    def order(entry: InstalledPack):
+        age = -(entry.info.data_date or date.min).toordinal()  # an unknown date counts as oldest
+        return (entry.info.kind != "mission", age)
+
+    # A partial pack has no open map file, so it is never asked.
+    return [entry.pack for entry in sorted(entries, key=order) if entry.pack is not None]
 
 
 def scan(maps: Path) -> None:

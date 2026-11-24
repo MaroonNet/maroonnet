@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from pmtiles.tile import Compression, TileType, zxy_to_tileid
 from pmtiles.writer import write
 
-from maps.installed import installed
+from maps.installed import folder_holds, installed, scan
 from maps.pack_info import PackInfo, write_pack_info
 from maps.tests.samples import COLORADO_TERRAIN
 from server.main import app
@@ -46,6 +46,25 @@ def write_pack_json():
         write_pack_info(folder, PackInfo.model_validate({**COLORADO_TERRAIN, **changes}))
 
     return _write_pack_json
+
+
+@pytest.fixture
+def install_pack(data_dir, make_pack, write_pack_json):
+    """Returns a function that puts a made-up pack in the maps folder and has the backend find it,
+    as it does when it starts. The pack's id says what it is: "state/CO/terrain"."""
+
+    def _install_pack(pack_id, tiles, **changes):
+        maps = data_dir / "maps"
+        kind, contents = folder_holds(pack_id)
+        write_pack_json(maps / pack_id, kind=kind, contents=contents, file="map.pmtiles", **changes)
+        if contents == "terrain":  # heights are WebP pictures, stored as they are
+            tile_type, compression = TileType.WEBP, Compression.NONE
+        else:
+            tile_type, compression = TileType.MVT, Compression.GZIP
+        make_pack(tiles, tile_type, compression, name=str(maps / pack_id / "map.pmtiles"))
+        scan(maps)
+
+    return _install_pack
 
 
 @pytest.fixture

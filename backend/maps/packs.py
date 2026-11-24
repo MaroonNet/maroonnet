@@ -1,7 +1,5 @@
 """Reading tiles out of a pack: one PMTiles file holding every tile of one area."""
 
-from functools import cache
-
 from pmtiles.reader import MmapSource, Reader
 from pmtiles.tile import Compression, TileType
 
@@ -32,9 +30,3 @@ class Pack:
         if x >= 2**z or y >= 2**z:
             return None
         return self._reader.get(z, x, y)
-
-
-@cache
-def open_pack(path: str) -> Pack:
-    """Open each pack once and reuse it for every request."""
-    return Pack(path)
