@@ -4,7 +4,7 @@ import {
 } from '@tabler/icons-react'
 
 // The panels a rail button can open.
-export type PanelId = 'teams' | 'people' | 'sectors' | 'area' | 'alerts' | 'mesh' | 'layers' | 'maps' | 'aar'
+export type PanelId = 'teams' | 'people' | 'sectors' | 'area' | 'alerts' | 'mesh' | 'layers' | 'maps' | 'aar' | 'settings'
 
 // built: the button's panel exists. The rest are greyed out until their panel is built.
 const BUTTONS: { id: PanelId, label: string, icon: Icon, built: boolean }[] = [
@@ -56,7 +56,13 @@ function Rail({ openPanel, onPress }: Props) {
                     <button type="button" {...NOT_YET} className="flex-1 bg-ink py-1 font-mono text-label tracking-wider text-panel">DAY</button>
                     <button type="button" {...NOT_YET} className="flex-1 py-1 font-mono text-label tracking-wider text-muted">NIGHT</button>
                 </div>
-                <RailButton label="Settings" icon={IconSettings} short />
+                <RailButton
+                    label="Settings"
+                    icon={IconSettings}
+                    open={openPanel === 'settings'}
+                    onPress={() => onPress('settings')}
+                    short
+                />
             </div>
         </nav>
     )

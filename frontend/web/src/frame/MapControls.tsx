@@ -1,6 +1,7 @@
 import { IconList, IconMinus, IconPlus, type Icon } from '@tabler/icons-react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { useEffect, useState } from 'react'
+import { useSettings, type Units } from '../settings/settings.ts'
 import { metersPerPixel, scaleBar } from './scaleBar.ts'
 
 const SCALE_MAX = 170  // the widest the scale bar is drawn, in pixels
@@ -17,6 +18,7 @@ function MapControls({ map }: Props) {
     // Where the map is now. It is read again each time the map moves, so the zoom buttons
     // and the scale bar follow it.
     const [view, setView] = useState(() => readView(map))
+    const { settings } = useSettings()
 
     useEffect(() => {
         function onMove() {
@@ -33,7 +35,7 @@ function MapControls({ map }: Props) {
                 <ZoomButton label="Zoom out" icon={IconMinus} atLimit={view.zoom <= map.getMinZoom()} onPress={() => map.zoomOut()} />
             </div>
             <div className="flex items-end gap-2.5">
-                <ScaleBar groundPerPixel={metersPerPixel(view.latitude, view.zoom)} />
+                <ScaleBar groundPerPixel={metersPerPixel(view.latitude, view.zoom)} units={settings.units} />
                 <Legend />
             </div>
         </div>
@@ -67,10 +69,11 @@ function ZoomButton({ label, icon: ButtonIcon, atLimit, onPress }: ZoomButtonPro
     )
 }
 
-// A bar as wide as a round distance on the ground, with that distance written in it.
-// groundPerPixel is how many meters of ground one screen pixel covers.
-function ScaleBar({ groundPerPixel }: { groundPerPixel: number }) {
-    const { label, width } = scaleBar(groundPerPixel, SCALE_MAX)
+// A bar as wide as a round distance on the ground, with that distance written in it, in the
+// units the Units setting names. groundPerPixel is how many meters of ground one screen
+// pixel covers.
+function ScaleBar({ groundPerPixel, units }: { groundPerPixel: number, units: Units }) {
+    const { label, width } = scaleBar(groundPerPixel, SCALE_MAX, units)
     return (
         <div
             title="Map scale"

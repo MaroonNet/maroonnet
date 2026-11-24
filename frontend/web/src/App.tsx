@@ -8,6 +8,7 @@ import LayersPanel from './layers/LayersPanel.tsx'
 import MissionMap from './map/MissionMap.tsx'
 import { style } from './map/mapStyle.ts'
 import type { StyleMetadata } from './map/styleChoices.ts'
+import SettingsPanel from './settings/SettingsPanel.tsx'
 
 // The whole screen: the rail down the left edge, the panel its buttons open, and the map
 // filling the rest, with the toolbar over its top left corner.
@@ -45,6 +46,11 @@ function App() {
           ) : (
             <p className="px-4 py-3 font-medium text-muted">The map's layers could not be loaded.</p>
           )}
+        </Panel>
+      )}
+      {openPanel === 'settings' && (
+        <Panel title="Settings" onClose={() => setOpenPanel(null)}>
+          <SettingsPanel />
         </Panel>
       )}
       <main className="relative z-0 min-w-0 flex-1">

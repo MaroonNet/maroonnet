@@ -2,7 +2,7 @@
 // Imported first in main.tsx, so it is listening before any other code runs.
 
 // The kinds of error the page reports. The backend prints the kind first on each line.
-type ErrorKind = 'error' | 'rejection' | 'map' | 'style'
+type ErrorKind = 'error' | 'rejection' | 'map' | 'style' | 'settings'
 
 // error is whatever was caught. It is sent as its text plus, for an Error, its stack trace (the
 // chain of calls that led to it). Chrome's stack trace starts with the text; Safari's does not.
