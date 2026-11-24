@@ -1,4 +1,4 @@
-"""missiondb tables, from "Mission Database (missiondb): Third Normal Form" v1.2.
+"""missiondb tables, from "Mission Database (missiondb): Third Normal Form" v1.3.
 
 One SQLite file per mission day; the mission table holds one row. Table and column names
 match the 3NF document so the document and the code can be read side by side.
@@ -9,6 +9,7 @@ Constraints section appears here explicitly in a __table_args__ tuple.
 Rules that stay in application code because a table cannot express them portably:
   - a sector has at least three points;
   - a completed sector is never reopened (writers guard UPDATEs with status <> 'completed');
+  - mission.time_zone is a real IANA zone name (the command post checks it with zoneinfo);
   - a sector that has been sent over the mesh is never edited, only completed and replaced.
 
 Dialect-specific pieces (grep "sqlite"): the UTC text-format CHECKs apply to SQLite only;
@@ -130,12 +131,43 @@ def _enum_column(enum_cls: type[Enum], *, name: str, default: Enum | None = None
 class SectorStatus(str, Enum):
     DRAWN = "drawn"            # red on the map; may or may not have a group yet
     SEARCHING = "searching"    # a team of the assigned group has entered (application rule)
+    PARTIAL = "partial"        # searched in part, nobody on it now: the group left, the period
+                               # ended, or the search was called off. May be searched again.
     COMPLETED = "completed"    # green: completed_time is set; the row is history from here on
+
+
+class MissionStatus(str, Enum):
+    """Where this file's operational period stands. One file per period, so 'paused' and
+    'ended' are both a closed file; the difference is whether the mission goes on."""
+
+    PLANNING = "planning"  # being set up (maps, roster, radios, sectors); nothing logged yet
+    ACTIVE = "active"      # started: positions and messages are being logged
+    PAUSED = "paused"      # this period is over; the mission continues in the next file
+    ENDED = "ended"        # the mission is over; the AAR can be built
+
+
+class TeamKind(str, Enum):
+    """What a radio is doing in this period. The command post decides how often each kind
+    reports its position; that interval is not stored."""
+
+    SEARCHER = "searcher"          # carried by searchers in the field
+    COMMAND_POST = "command_post"  # plugged in at the command post; does not move
+    RELAY = "relay"                # stationary repeater, or a spare not in use
+    AERIAL = "aerial"              # on a helicopter or drone
 
 
 class MessageDirection(str, Enum):
     IN = "in"    # from a radio to the command post
     OUT = "out"  # from the command post to a radio
+
+
+class MessageAddressing(str, Enum):
+    """How one send was addressed. Whatever the addressing, there is one message row per
+    radio, so each radio has its own times and acknowledgement."""
+
+    DIRECT = "direct"        # to or from one radio
+    MULTICAST = "multicast"  # one send to several chosen radios
+    BROADCAST = "broadcast"  # one send to every radio
 
 
 # --------------------------------------------------------------------------------------------
@@ -147,12 +179,29 @@ class Mission(MissionBase, table=True):
     """Exactly one row per file. A mission is one or more operational periods (a shift of
     work; a day, a night, a start/stop), each its own file: same mission_uuid and name,
     operational_period 1, 2, 3... Rows carried from one period into the next keep their
-    ids (see carryover.py), so the AAR can stitch periods by id."""
+    ids (see carryover.py), so the AAR can stitch periods by id.
+
+    status and the two times move together (both rules are CHECK constraints):
+      planning          start_time NULL, end_time NULL
+      active            start_time set,  end_time NULL
+      paused, ended     start_time set,  end_time set
+    Start = set status 'active' and start_time in one UPDATE. Undoing a mistaken End or
+    Pause = set status back to 'active' and end_time to NULL in one UPDATE.
+
+    time_zone is the IANA name of the zone the search is in (America/Phoenix). Every
+    timestamp in the file stays UTC; the UI and the AAR show local time in this zone, not
+    in the zone of whatever laptop opens the file.
+    """
 
     __tablename__ = "mission"
     __table_args__ = (
         CheckConstraint("mission_id = 1", name="single_row"),
         CheckConstraint("operational_period >= 1", name="operational_period"),
+        CheckConstraint("(status = 'planning') = (start_time IS NULL)", name="start_time"),
+        CheckConstraint(
+            "(status IN ('paused', 'ended')) = (end_time IS NOT NULL)", name="end_time"
+        ),
+        CheckConstraint("time_zone <> ''", name="time_zone"),
         _utc_text("start_time"),
         _utc_text("end_time"),
     )
@@ -166,7 +215,14 @@ class Mission(MissionBase, table=True):
     operational_period: int = Field(
         default=1, sa_column=Column(Integer, nullable=False, server_default=text("1"))
     )
-    start_time: datetime = Field(sa_column=_utc_column())
+    status: MissionStatus = Field(
+        default=MissionStatus.PLANNING,
+        sa_column=_enum_column(MissionStatus, name="status", default=MissionStatus.PLANNING),
+    )
+    time_zone: str = Field(
+        default="UTC", sa_column=Column(Text, nullable=False, server_default=text("'UTC'"))
+    )
+    start_time: datetime | None = Field(default=None, sa_column=_utc_column(nullable=True))
     end_time: datetime | None = Field(default=None, sa_column=_utc_column(nullable=True))
 
     search_areas: list["SearchArea"] = Relationship(back_populates="mission")
@@ -215,6 +271,9 @@ class Team(MissionBase, table=True):
 
     Which group the radio is in, and who carries it, are history tables
     (team_group_assignment, searcher_team_assignment), not columns here.
+
+    kind is what the radio is doing now. A searcher radio set down as a relay is an UPDATE
+    of kind; the 'relay' waypoint placed there records where and when.
     """
 
     __tablename__ = "team"
@@ -228,6 +287,10 @@ class Team(MissionBase, table=True):
             nullable=False,
             server_default=false(),
         ),
+    )
+    kind: TeamKind = Field(
+        default=TeamKind.SEARCHER,
+        sa_column=_enum_column(TeamKind, name="kind", default=TeamKind.SEARCHER),
     )
 
     group_assignments: list["TeamGroupAssignment"] = Relationship(back_populates="team")
@@ -249,6 +312,38 @@ class Searcher(MissionBase, table=True):
     lname: str = Field(sa_column=Column(Text, nullable=False))
 
     team_assignments: list["SearcherTeamAssignment"] = Relationship(back_populates="searcher")
+    checkins: list["SearcherCheckin"] = Relationship(back_populates="searcher")
+
+
+class SearcherCheckin(MissionBase, table=True):
+    """When a searcher was present for this operational period. out_time NULL = here now.
+
+    Checking out = set out_time; coming back = a new row. One open row per searcher (partial
+    unique index). A searcher with no row at all is on the list but has not shown up. Not
+    carried between operational periods: each period records its own attendance.
+    """
+
+    __tablename__ = "searcher_checkin"
+    __table_args__ = (
+        CheckConstraint("out_time IS NULL OR out_time >= in_time", name="ordered"),
+        _utc_text("in_time"),
+        _utc_text("out_time"),
+        Index(
+            "ux_searcher_checkin_open",
+            "searcher_id",
+            unique=True,
+            sqlite_where=text("out_time IS NULL"),
+            postgresql_where=text("out_time IS NULL"),
+        ),
+        Index("ix_searcher_checkin_searcher_id", "searcher_id"),
+    )
+
+    checkin_id: int | None = Field(default=None, primary_key=True)
+    searcher_id: int = Field(foreign_key="searcher.searcher_id", nullable=False)
+    in_time: datetime = Field(sa_column=_utc_column())
+    out_time: datetime | None = Field(default=None, sa_column=_utc_column(nullable=True))
+
+    searcher: Searcher = Relationship(back_populates="checkins")
 
 
 class TeamGroupAssignment(MissionBase, table=True):
@@ -320,7 +415,12 @@ class SearchSector(MissionBase, table=True):
     tables). A group holds at most one sector and a sector at most one group at a time; both
     are partial unique indexes on sector_assignment. Reassigning = close the open assignment
     and open the next, in one transaction. Carried into the next operational period, a sector
-    keeps its id, name, points and status but arrives with no open assignment.
+    keeps its id, name, points and status but arrives with no open assignment (so a sector
+    that was 'searching' arrives 'partial').
+
+    'partial' means searched in part with nobody on it now. Leaving a sector unfinished =
+    close its assignment and set 'partial' in one transaction; a group entering it again
+    turns it back to 'searching'. Only 'completed' carries a completed_time.
 
     On the mesh (Assignment Packet record v1.3) a sector is one port-256 packet carrying an
     assignment ID (0-65,535), a name of at most 20 UTF-8 bytes and 3-24 corners. The
@@ -523,16 +623,25 @@ DEFAULT_MESSAGE_TYPES: tuple[tuple[str, str], ...] = (
 class Message(MissionBase, table=True):
     """A text message to or from one radio.
 
-    Known gaps, deferred by the team (Nov 3, 2026) until mesh messaging is designed: no
-    packet id, so an inbound message heard twice is stored twice; no group recipient, so an
-    outbound message to a whole group is one row per radio.
+    One row per radio, always. A send to several radios (multicast) or to all (broadcast)
+    is one row per receiving radio sharing a batch_id, so the UI can show it as one message
+    and still see who has acknowledged. batch_id is the message_id of the first row of the
+    send; a direct message has none.
+
+    ack_time stays NULL until the receiver acknowledges (like sector_dispatch). packet_id is
+    the Meshtastic packet id when the sender reports one. Still open until mesh messaging is
+    designed: an inbound message heard twice is stored twice (packet_id is not unique).
     """
 
     __tablename__ = "message"
     __table_args__ = (
+        CheckConstraint("ack_time IS NULL OR ack_time >= time", name="ack_after_sent"),
+        CheckConstraint("(addressing = 'direct') = (batch_id IS NULL)", name="batch_id"),
         _utc_text("time"),
         _utc_text("rx_time"),
+        _utc_text("ack_time"),
         Index("ix_message_time", "time"),
+        Index("ix_message_batch_id", "batch_id"),
     )
 
     message_id: int | None = Field(default=None, primary_key=True)
@@ -546,6 +655,13 @@ class Message(MissionBase, table=True):
         sa_column=Column(Text, ForeignKey("message_type.type_code"), nullable=False)
     )
     text: str = Field(sa_column=Column(Text, nullable=False))
+    addressing: MessageAddressing = Field(
+        default=MessageAddressing.DIRECT,
+        sa_column=_enum_column(MessageAddressing, name="addressing", default=MessageAddressing.DIRECT),
+    )
+    batch_id: int | None = Field(default=None, sa_column=Column(Integer, nullable=True))
+    ack_time: datetime | None = Field(default=None, sa_column=_utc_column(nullable=True))
+    packet_id: int | None = Field(default=None, sa_column=Column(BigInteger, nullable=True))
 
     team: Team = Relationship(back_populates="messages")
 
@@ -569,6 +685,8 @@ DEFAULT_WAYPOINT_TYPES: tuple[tuple[str, str], ...] = (
     ("relay", "Stationary relay radio"),
     ("last_known_position", "Subject's last known position"),
     ("meeting_point", "Rendezvous for searchers"),
+    ("point_last_seen", "Where a witness last saw the subject"),
+    ("other", "Anything else worth marking"),
 )
 
 

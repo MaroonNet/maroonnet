@@ -73,17 +73,17 @@ def test_open_next_period(period1, tmp_path):
     assert current(f"sqlite:///{period2}") == head_revision()
 
     with sqlite3.connect(period2) as c:
-        m = c.execute("SELECT mission_uuid, name, operational_period, start_time, end_time FROM mission").fetchone()
-        assert m[1:] == ("Arizona07", 2, "2025-04-14T20:25:00Z", None)
+        m = c.execute("SELECT mission_uuid, name, operational_period, start_time, end_time, status FROM mission").fetchone()
+        assert m[1:] == ("Arizona07", 2, "2025-04-14T20:25:00Z", None, "active")
         with sqlite3.connect(period1) as p1:
             assert m[0] == p1.execute("SELECT mission_uuid FROM mission").fetchone()[0]
         assert c.execute("SELECT search_sector_id, name, status FROM search_sector ORDER BY 1").fetchall() == [
             (1, "S1", "completed"), (2, "S2", "completed"), (3, "S3", "completed"),
-            (4, "S4", "completed"), (5, "S5", "drawn")]
+            (4, "S4", "completed"), (5, "S5", "partial")]   # was 'searching': searched in part
         assert c.execute("SELECT team_id FROM team ORDER BY 1").fetchall() == [(1,), (2,), (3,), (4,), (5,)]
         assert c.execute("SELECT search_group_id FROM search_group").fetchall() == [(2,)]
         for t in ("location", "message", "sector_entry", "sector_dispatch", "sector_assignment",
-                  "team_group_assignment", "searcher_team_assignment"):
+                  "team_group_assignment", "searcher_team_assignment", "searcher_checkin"):
             assert c.execute(f"SELECT count(*) FROM {t}").fetchone()[0] == 0, t
         wps = c.execute("SELECT type_code, team_id, message_id, removed_time IS NULL FROM waypoint ORDER BY waypoint_id").fetchall()
         assert wps == [("find", 1, None, 1), ("command_post", None, None, 0), ("command_post", None, None, 1)]
@@ -142,3 +142,32 @@ def test_policy_can_leave_sectors_behind(period1, tmp_path):
     with sqlite3.connect(tmp_path / "op-02.sqlite3") as c:
         assert c.execute("SELECT search_sector_id, name FROM search_sector").fetchall() == [(5, "S5")]
         assert c.execute("PRAGMA foreign_key_check").fetchall() == []
+
+
+def test_next_period_keeps_time_zone_and_radio_kinds(period1, tmp_path):
+    upgrade(f"sqlite:///{period1}")
+    with sqlite3.connect(period1) as c:
+        c.execute("UPDATE mission SET time_zone = 'America/Phoenix'")
+        c.execute("UPDATE team SET kind = 'relay' WHERE team_id = 6")
+        c.execute("INSERT INTO searcher_checkin (searcher_id, in_time) VALUES (1, '2025-04-14T03:30:00Z')")
+    open_next_period(period1, tmp_path / "op-02.sqlite3")
+    with sqlite3.connect(tmp_path / "op-02.sqlite3") as c:
+        assert c.execute("SELECT time_zone, status FROM mission").fetchone() == ("America/Phoenix", "active")
+        assert c.execute("SELECT kind FROM team WHERE team_id = 6").fetchone() == ("relay",)
+        assert c.execute("SELECT count(*) FROM searcher_checkin").fetchone() == (0,)
+
+
+def test_next_period_can_open_in_planning(period1, tmp_path):
+    open_next_period(period1, tmp_path / "op-02.sqlite3", planning=True)
+    with sqlite3.connect(tmp_path / "op-02.sqlite3") as c:
+        assert c.execute("SELECT status, start_time, operational_period FROM mission").fetchone() == ("planning", None, 2)
+
+
+def test_partial_sector_stays_partial(period1, tmp_path):
+    upgrade(f"sqlite:///{period1}")
+    with sqlite3.connect(period1) as c:
+        c.execute("UPDATE search_sector SET status = 'partial' WHERE search_sector_id = 5")
+    report = open_next_period(period1, tmp_path / "op-02.sqlite3")
+    assert report.sectors_reopened == []                 # nothing was mid-search
+    with sqlite3.connect(tmp_path / "op-02.sqlite3") as c:
+        assert c.execute("SELECT status FROM search_sector WHERE search_sector_id = 5").fetchone() == ("partial",)

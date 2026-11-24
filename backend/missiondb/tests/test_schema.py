@@ -22,12 +22,15 @@ from missiondb.models import (
     DEFAULT_WAYPOINT_TYPES,
     Location,
     Message,
+    MessageAddressing,
     MessageDirection,
     MessageType,
     Mission,
     MissionBase,
+    MissionStatus,
     SearchArea,
     Searcher,
+    SearcherCheckin,
     SearcherTeamAssignment,
     SearchGroup,
     SearchSector,
@@ -38,6 +41,7 @@ from missiondb.models import (
     SectorStatus,
     Team,
     TeamGroupAssignment,
+    TeamKind,
     Waypoint,
     WaypointType,
 )
@@ -123,7 +127,7 @@ def test_all_tables_exist(session):
         "mission", "search_area", "search_group", "team", "searcher",
         "team_group_assignment", "searcher_team_assignment", "search_sector",
         "search_sector_point", "sector_entry", "sector_dispatch", "sector_assignment",
-        "location", "message_type", "message", "waypoint_type", "waypoint",
+        "location", "message_type", "message", "waypoint_type", "waypoint", "searcher_checkin",
     }
 
 
@@ -167,7 +171,7 @@ def test_message_types_seeded(session):
 
 
 def test_timestamps_stored_as_iso_8601_utc(session):
-    session.add(Mission(name="Lost hiker", start_time=T0))
+    session.add(Mission(name="Lost hiker", status=MissionStatus.ACTIVE, start_time=T0))
     session.commit()
     assert session.exec(text("SELECT start_time FROM mission")).one()[0] == "2026-10-23T21:15:00Z"
     mission = session.exec(select(Mission)).one()
@@ -175,7 +179,7 @@ def test_timestamps_stored_as_iso_8601_utc(session):
 
 
 def test_naive_timestamp_rejected(session):
-    session.add(Mission(name="x", start_time=datetime(2026, 10, 23, 21, 15)))
+    session.add(Mission(name="x", status=MissionStatus.ACTIVE, start_time=datetime(2026, 10, 23, 21, 15)))
     with pytest.raises(StatementError, match="timezone-aware"):
         session.commit()
 
@@ -210,17 +214,17 @@ def test_foreign_timestamp_formats_are_readable(engine, db_path):
 
 
 def test_one_mission_row_per_file(session):
-    session.add(Mission(name="day 1", start_time=T0))
+    session.add(Mission(name="day 1", status=MissionStatus.ACTIVE, start_time=T0))
     session.commit()
-    session.add(Mission(name="day 1 again", start_time=T0))
+    session.add(Mission(name="day 1 again", status=MissionStatus.ACTIVE, start_time=T0))
     with _rejects(session):
         session.commit()
 
 
 def test_mission_uuid_generated_per_mission(session, tmp_path):
-    m = Mission(name="day 1", start_time=T0)
+    m = Mission(name="day 1", status=MissionStatus.ACTIVE, start_time=T0)
     assert len(m.mission_uuid) == 36
-    assert m.mission_uuid != Mission(name="other", start_time=T0).mission_uuid
+    assert m.mission_uuid != Mission(name="other", status=MissionStatus.ACTIVE, start_time=T0).mission_uuid
     session.add(m)
     session.commit()
     day1_uuid = session.exec(select(Mission.mission_uuid)).one()
@@ -228,7 +232,7 @@ def test_mission_uuid_generated_per_mission(session, tmp_path):
     day2 = create_db_engine(f"sqlite:///{tmp_path / 'day2.sqlite3'}")
     init_db(day2)
     with Session(day2) as s2:
-        s2.add(Mission(name="day 2", start_time=T0 + timedelta(days=1), mission_uuid=day1_uuid))
+        s2.add(Mission(name="day 2", status=MissionStatus.ACTIVE, start_time=T0 + timedelta(days=1), mission_uuid=day1_uuid))
         s2.commit()
         assert s2.exec(select(Mission.mission_uuid)).one() == day1_uuid
 
@@ -354,11 +358,11 @@ def test_sector_held_by_one_group_at_a_time(session):
 
 
 def test_mission_operational_period(session):
-    session.add(Mission(name="m", start_time=T0))
+    session.add(Mission(name="m", status=MissionStatus.ACTIVE, start_time=T0))
     session.commit()
     assert session.exec(select(Mission)).one().operational_period == 1
     session.exec(text("DELETE FROM mission"))
-    session.add(Mission(mission_id=1, name="m", start_time=T0, operational_period=0))
+    session.add(Mission(mission_id=1, name="m", status=MissionStatus.ACTIVE, start_time=T0, operational_period=0))
     with _rejects(session):
         session.commit()
 
@@ -449,7 +453,7 @@ def test_time_range_query_orders_correctly(session):
 
 
 def test_search_area_corners(session):
-    session.add(Mission(name="m", start_time=T0))
+    session.add(Mission(name="m", status=MissionStatus.ACTIVE, start_time=T0))
     session.commit()
     session.add(SearchArea(mission_id=1, min_lat=40.0, min_lon=-105.0, max_lat=39.0, max_lon=-104.0))
     with _rejects(session):
@@ -594,3 +598,149 @@ def test_sector_names_unique_when_set(session):
     session.add(SearchSector(name="S1", created_time=T0))
     with _rejects(session):
         session.commit()
+
+
+# ---- 3NF v1.3: mission status, radio kinds, partial sectors, acks, check-in -------------------
+
+
+def test_mission_starts_in_planning_without_a_start_time(session):
+    session.add(Mission(name="m"))
+    session.commit()
+    m = session.exec(select(Mission)).one()
+    assert (m.status, m.start_time, m.end_time, m.time_zone) == (MissionStatus.PLANNING, None, None, "UTC")
+
+
+def test_mission_status_and_times_move_together(session):
+    m = Mission(name="m", time_zone="America/Phoenix")
+    session.add(m)
+    session.commit()
+
+    m.status = MissionStatus.ACTIVE                      # started but no start_time
+    with _rejects(session):
+        session.commit()
+    session.rollback()
+    m = session.exec(select(Mission)).one()
+    m.status, m.start_time = MissionStatus.ACTIVE, T0
+    session.commit()
+
+    m.status = MissionStatus.ENDED                       # ended but no end_time
+    with _rejects(session):
+        session.commit()
+    session.rollback()
+    m = session.exec(select(Mission)).one()
+    m.status, m.end_time = MissionStatus.PAUSED, T0 + timedelta(hours=8)
+    session.commit()
+    m.status = MissionStatus.ENDED                       # paused -> ended keeps the end_time
+    session.commit()
+
+    m.status, m.end_time = MissionStatus.ACTIVE, None    # a mistaken End, undone
+    session.commit()
+    m.end_time = T0 + timedelta(hours=9)                 # active with an end_time
+    with _rejects(session):
+        session.commit()
+
+
+def test_mission_planning_with_a_start_time_rejected(session):
+    session.add(Mission(name="m", start_time=T0))
+    with _rejects(session):
+        session.commit()
+
+
+def test_mission_time_zone_not_empty(session):
+    session.add(Mission(name="m", time_zone=""))
+    with _rejects(session):
+        session.commit()
+
+
+def test_team_kind(session):
+    assert _team(session).kind == TeamKind.SEARCHER
+    session.add(Team(node_num=NODE + 1, kind=TeamKind.COMMAND_POST))
+    session.add(Team(node_num=NODE + 2, kind=TeamKind.RELAY))
+    session.commit()
+    with _rejects(session):
+        session.execute(text("INSERT INTO team (node_num, kind) VALUES (7, 'dormant')"))
+
+
+def test_partial_sector_has_no_completed_time_and_can_resume(session):
+    s = _sector(session, "S1")
+    s.status = SectorStatus.PARTIAL
+    session.commit()
+    s.completed_time = T0
+    with _rejects(session):
+        session.commit()
+    session.rollback()
+    s = session.get(SearchSector, s.search_sector_id)
+    s.status = SectorStatus.SEARCHING                    # a group goes back in
+    session.commit()
+    s.status, s.completed_time = SectorStatus.COMPLETED, T0
+    session.commit()
+
+
+def test_message_ack_and_packet_id(session):
+    team = _team(session)
+    m = Message(team_id=team.team_id, time=T0, rx_time=T0, direction=MessageDirection.OUT,
+                type_code="instruction", text="return to CP", packet_id=0xFFFFFFFF)
+    session.add(m)
+    session.commit()
+    assert (m.addressing, m.batch_id, m.ack_time) == (MessageAddressing.DIRECT, None, None)
+    m.ack_time = T0 + timedelta(seconds=9)
+    session.commit()
+    assert session.get(Message, m.message_id).packet_id == 0xFFFFFFFF
+    m.ack_time = T0 - timedelta(seconds=1)
+    with _rejects(session):
+        session.commit()
+
+
+def test_broadcast_is_one_row_per_radio_sharing_a_batch(session):
+    a = _team(session)
+    b = Team(node_num=NODE + 1)
+    session.add(b)
+    session.commit()
+    first = Message(team_id=a.team_id, time=T0, rx_time=T0, direction=MessageDirection.OUT,
+                    type_code="instruction", text="all teams return", addressing=MessageAddressing.BROADCAST,
+                    batch_id=1)
+    session.add(first)
+    session.add(Message(team_id=b.team_id, time=T0, rx_time=T0, direction=MessageDirection.OUT,
+                        type_code="instruction", text="all teams return",
+                        addressing=MessageAddressing.BROADCAST, batch_id=1,
+                        ack_time=T0 + timedelta(seconds=5)))
+    session.commit()
+    acked = session.exec(text("SELECT count(*), count(ack_time) FROM message WHERE batch_id = 1")).one()
+    assert tuple(acked) == (2, 1)
+    # a shared send needs a batch_id, and a direct message must not have one
+    with _rejects(session):
+        session.execute(text(
+            "INSERT INTO message (team_id, time, rx_time, direction, type_code, text, addressing) "
+            f"VALUES ({a.team_id}, '2026-10-23T21:15:00Z', '2026-10-23T21:15:00Z', 'out', 'instruction', 'x', 'multicast')"))
+    session.rollback()
+    with _rejects(session):
+        session.execute(text(
+            "INSERT INTO message (team_id, time, rx_time, direction, type_code, text, batch_id) "
+            f"VALUES ({a.team_id}, '2026-10-23T21:15:00Z', '2026-10-23T21:15:00Z', 'out', 'instruction', 'x', 9)"))
+
+
+def test_searcher_check_in_and_out(session):
+    person = Searcher(fname="Ada", lname="Lovelace")
+    session.add(person)
+    session.commit()
+    first = SearcherCheckin(searcher_id=person.searcher_id, in_time=T0)
+    session.add(first)
+    session.commit()
+    session.add(SearcherCheckin(searcher_id=person.searcher_id, in_time=T0 + timedelta(hours=1)))
+    with _rejects(session):                              # already checked in
+        session.commit()
+    session.rollback()
+    first = session.get(SearcherCheckin, first.checkin_id)
+    first.out_time = T0 + timedelta(hours=6)             # checked out
+    session.commit()
+    session.add(SearcherCheckin(searcher_id=person.searcher_id, in_time=T0 + timedelta(hours=20)))
+    session.commit()                                     # back the next day: a new row
+    assert len(session.get(Searcher, person.searcher_id).checkins) == 2
+    first.out_time = T0 - timedelta(hours=1)
+    with _rejects(session):
+        session.commit()
+
+
+def test_new_waypoint_types_seeded(session):
+    codes = set(session.exec(select(WaypointType.type_code)).all())
+    assert {"point_last_seen", "other", "last_known_position"} <= codes
