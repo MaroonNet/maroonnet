@@ -1,6 +1,7 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 import App from './App.tsx'
+import SettingsProvider from './settings/SettingsProvider.tsx'
 
 // A pretend MapLibre map. It records zoom presses, and a test can move it to another zoom.
 // vi.hoisted makes it before the stand-ins below, which use it.
@@ -55,10 +56,12 @@ function openLayers() {
     fireEvent.click(screen.getByRole('button', { name: 'Layers' }))
 }
 
-// Between tests: clear the page, forget the recorded zoom presses, and put the map back.
+// Between tests: clear the page, forget the recorded zoom presses, take away any pretend
+// backend, and put the map back.
 afterEach(() => {
     cleanup()
     vi.clearAllMocks()
+    vi.unstubAllGlobals()
     fakeMap.moveToZoom(11)
 })
 
@@ -206,4 +209,124 @@ test('the legend button opens the legend in its place, and the legend folds back
     fireEvent.click(screen.getByRole('button', { name: 'Collapse legend' }))
     expect(screen.queryByRole('heading', { name: 'Legend' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Show legend' })).toBeTruthy()
+})
+
+test('pressing Settings opens the Settings panel, with the two unit choices and miles and feet picked', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Units' })).toBeTruthy()
+    const picked = (name: string) => (screen.getByRole('radio', { name }) as HTMLInputElement).checked
+    expect(picked('Miles and feet')).toBe(true)
+    expect(picked('Kilometers and meters')).toBe(false)
+})
+
+test('one panel is open at a time: opening Settings closes Layers', () => {
+    render(<App />)
+    openLayers()
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Map Layers' })).toBeNull()
+})
+
+// The tests below draw the app as main.tsx does, inside the settings board, with a pretend
+// backend answering the settings routes.
+
+function jsonAnswer(body: unknown, status = 200): Response {
+    return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+}
+
+// Stands in for the backend's settings routes. saved is what its settings file holds.
+// The list it returns fills with each change the web app sends.
+function pretendBackend(saved: { units: string }, fail: { reads?: boolean, saves?: boolean } = {}) {
+    const changesSent: unknown[] = []
+    vi.stubGlobal('fetch', vi.fn(async (address: string, request?: RequestInit) => {
+        if (address !== '/api/settings') return new Response(null, { status: 204 })  // the error log
+        if (!request?.method) return fail.reads ? jsonAnswer({}, 500) : jsonAnswer(saved)
+        changesSent.push({ method: request.method, body: JSON.parse(request.body as string) })
+        if (fail.saves) return jsonAnswer({}, 500)
+        Object.assign(saved, JSON.parse(request.body as string))
+        return jsonAnswer(saved)
+    }))
+    return changesSent
+}
+
+async function openSettingsOnTheBoard() {
+    render(<SettingsProvider><App /></SettingsProvider>)
+    fireEvent.click(await screen.findByRole('button', { name: 'Settings' }))  // waits for the frame
+}
+
+function picked(name: string): boolean {
+    return (screen.getByRole('radio', { name }) as HTMLInputElement).checked
+}
+
+test('the screen waits for the settings before it draws', async () => {
+    let answer!: (response: Response) => void
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((resolve) => { answer = resolve })))
+    render(<SettingsProvider><App /></SettingsProvider>)
+    expect(screen.queryByRole('button', { name: 'Layers' })).toBeNull()
+
+    await act(async () => answer(jsonAnswer({ units: 'metric' })))
+    expect(screen.getByRole('button', { name: 'Layers' })).toBeTruthy()
+})
+
+test('the Settings panel shows the saved choice', async () => {
+    pretendBackend({ units: 'metric' })
+    await openSettingsOnTheBoard()
+    expect(picked('Kilometers and meters')).toBe(true)
+    expect(picked('Miles and feet')).toBe(false)
+})
+
+test('picking a unit choice sends only that setting, and the panel switches once the backend has saved it', async () => {
+    const changesSent = pretendBackend({ units: 'imperial' })
+    await openSettingsOnTheBoard()
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Kilometers and meters' }))
+    expect(picked('Miles and feet')).toBe(true)  // not yet: the backend has not answered
+
+    await waitFor(() => expect(picked('Kilometers and meters')).toBe(true))
+    expect(changesSent).toEqual([{ method: 'PATCH', body: { units: 'metric' } }])
+})
+
+test('if a change cannot be saved, nothing switches and the panel says so', async () => {
+    pretendBackend({ units: 'imperial' }, { saves: true })
+    await openSettingsOnTheBoard()
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Kilometers and meters' }))
+
+    expect((await screen.findByRole('alert')).textContent).toBe('The change could not be saved.')
+    expect(picked('Miles and feet')).toBe(true)
+})
+
+test('a change that saves clears the note left by one that did not', async () => {
+    const backend = { units: 'imperial' }
+    pretendBackend(backend, { saves: true })
+    await openSettingsOnTheBoard()
+    fireEvent.click(screen.getByRole('radio', { name: 'Kilometers and meters' }))
+    await screen.findByRole('alert')
+
+    pretendBackend(backend)  // the backend can save again
+    fireEvent.click(screen.getByRole('radio', { name: 'Kilometers and meters' }))
+
+    await waitFor(() => expect(picked('Kilometers and meters')).toBe(true))
+    expect(screen.queryByRole('alert')).toBeNull()
+})
+
+test('the scale bar follows the Units setting', async () => {
+    pretendBackend({ units: 'imperial' })
+    await openSettingsOnTheBoard()
+    // Denver at zoom 11: 3.1 miles, or 5.0 kilometers, fit in the bar's 170 pixels.
+    expect(screen.getByTitle('Map scale').textContent).toBe('3 mi')
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Kilometers and meters' }))
+
+    await waitFor(() => expect(screen.getByTitle('Map scale').textContent).toBe('3 km'))
+})
+
+test('if the settings cannot be read, the frame draws with the starting values and the panel says so', async () => {
+    pretendBackend({ units: 'metric' }, { reads: true })
+    await openSettingsOnTheBoard()
+
+    expect(picked('Miles and feet')).toBe(true)
+    expect(screen.getByText('The settings could not be loaded, so the starting values are shown.')).toBeTruthy()
 })

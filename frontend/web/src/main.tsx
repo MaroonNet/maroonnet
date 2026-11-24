@@ -5,9 +5,12 @@ import '@fontsource-variable/schibsted-grotesk'  // the app's two fonts, shipped
 import '@fontsource-variable/geist-mono'
 import './index.css'
 import App from './App.tsx'
+import SettingsProvider from './settings/SettingsProvider.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <SettingsProvider>
+      <App />
+    </SettingsProvider>
   </StrictMode>,
 )
