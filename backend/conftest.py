@@ -3,6 +3,7 @@
 import pytest
 
 from maps.folders import DATA_DIR_VARIABLE
+from mission.folders import MISSIONS_DIR_VARIABLE
 
 
 @pytest.fixture(autouse=True)
@@ -10,4 +11,12 @@ def data_dir(tmp_path, monkeypatch):
     """Every test gets its own app data folder, so no test touches the real one."""
     folder = tmp_path / "app-data"
     monkeypatch.setenv(DATA_DIR_VARIABLE, str(folder))
+    return folder
+
+
+@pytest.fixture(autouse=True)
+def missions_dir(tmp_path, monkeypatch):
+    """Every test gets its own missions folder, so no test touches a real mission."""
+    folder = tmp_path / "missions"
+    monkeypatch.setenv(MISSIONS_DIR_VARIABLE, str(folder))
     return folder

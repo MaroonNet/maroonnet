@@ -5,12 +5,14 @@ from pydantic import BaseModel
 
 from maps.routes import router as maps_router
 from mapdb.routes import router as spm_router
+from mission.routes import router as mission_router
 from settings.routes import router as settings_router
 
 app = FastAPI()
 app.include_router(maps_router)
 app.include_router(spm_router)
 app.include_router(settings_router)
+app.include_router(mission_router)
 
 @app.get("/api/health")
 def health():
