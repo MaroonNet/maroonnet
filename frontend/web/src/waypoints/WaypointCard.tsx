@@ -11,35 +11,17 @@ import { kindOf } from './kinds.ts'
 import { useWaypoints, type Waypoint } from './waypoints.ts'
 
 type Props = {
-    ids: number[]                       // the waypoints picked with one click: one, or several on the same spot
-    onPick: (ids: number[]) => void     // one of several was chosen
+    id: number                          // the selected waypoint
     onClose: () => void                 // the card's close button, or the waypoint was deleted: nothing is selected
     onEdit: (id: number) => void        // Edit was pressed
 }
 
-const ROW = 'flex w-full cursor-pointer items-center gap-2 rounded-control border border-ink/30 px-2.5 py-1.5 text-left hover:bg-strip'
-
-// The card of what a click on the map's waypoints picked. One waypoint shows its card. Two
-// or more on the same spot show a row each, and pressing a row shows that one's card.
-// Shows nothing once none of them is on the board.
-function WaypointCard({ ids, onPick, onClose, onEdit }: Props) {
-    const { waypoints } = useWaypoints()
-    const here = waypoints.filter((waypoint) => ids.includes(waypoint.id))
-    if (here.length === 0) return null
-    if (here.length === 1) return <OneWaypoint key={here[0].id} waypoint={here[0]} onClose={onClose} onEdit={onEdit} />
-    return (
-        <Card title={`${here.length} waypoints here`} onClose={onClose}>
-            <div className="flex flex-col gap-1.5">
-                {here.map((waypoint) => (
-                    <button key={waypoint.id} type="button" onClick={() => onPick([waypoint.id])} className={ROW}>
-                        <KindMarker kind={waypoint.kind} small />
-                        <span className="flex-1">{waypoint.name}</span>
-                        <span className="font-medium text-muted">{kindOf(waypoint.kind).label}</span>
-                    </button>
-                ))}
-            </div>
-        </Card>
-    )
+// The card of the selected waypoint. Shows nothing once it is no longer on the board.
+// (A click on several markers on one spot shows map/StackCard.tsx first.)
+function WaypointCard({ id, onClose, onEdit }: Props) {
+    const waypoint = useWaypoints().waypoints.find((one) => one.id === id)
+    if (!waypoint) return null
+    return <OneWaypoint key={waypoint.id} waypoint={waypoint} onClose={onClose} onEdit={onEdit} />
 }
 
 type OneProps = { waypoint: Waypoint, onClose: () => void, onEdit: (id: number) => void }

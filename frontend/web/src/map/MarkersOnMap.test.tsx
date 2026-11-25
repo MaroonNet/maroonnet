@@ -1,0 +1,201 @@
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import type { CSSProperties, ReactNode } from 'react'
+import { afterEach, expect, test, vi } from 'vitest'
+import { PeopleContext } from '../people/people.ts'
+import { RADIOS } from '../teams/sample.ts'
+import { groupColor, NO_GROUP_COLOR } from '../teams/teamWords.ts'
+import type { Radio } from '../teams/teams.ts'
+import { ARIZONA07, board } from '../waypoints/sample.ts'
+import { WaypointsContext, type Waypoint } from '../waypoints/waypoints.ts'
+import MarkersOnMap from './MarkersOnMap.tsx'
+import type { Stack } from './stacks.ts'
+
+// The map library's marker, as a box at its place. A press on it reaches the component as
+// the library's own click does.
+type MarkerProps = { longitude: number, latitude: number, style?: CSSProperties, onClick?: (event: unknown) => void, children: ReactNode }
+const stopped = vi.hoisted(() => ({ count: 0 }))
+vi.mock('react-map-gl/maplibre', () => ({
+    Marker: ({ longitude, latitude, style, onClick, children }: MarkerProps) => (
+        <div
+            data-testid="marker"
+            data-place={`${latitude},${longitude}`}
+            style={style}
+            onClick={() => onClick?.({ originalEvent: { stopPropagation() { stopped.count += 1 } } })}
+        >
+            {children}
+        </div>
+    ),
+}))
+
+// A pretend map on which a degree is 100,000 pixels, so a meter is about a pixel. A test
+// zooms it out with pretend.zoomTo(...), which tells the listener the component left.
+const pretend = vi.hoisted(() => ({
+    scale: 100_000,
+    onZoom: null as (() => void) | null,
+    zoomTo(scale: number) {
+        this.scale = scale
+        this.onZoom?.()
+    },
+}))
+vi.mock('./missionMap.ts', () => {
+    const map = {
+        project: ([lon, lat]: [number, number]) => ({ x: lon * pretend.scale, y: lat * pretend.scale }),
+        on: (_event: string, listener: () => void) => { pretend.onZoom = listener },
+        off: () => { pretend.onZoom = null },
+    }
+    return { useMissionMap: () => map }
+})
+
+afterEach(() => {
+    cleanup()
+    stopped.count = 0
+    pretend.scale = 100_000
+})
+
+type Drawn = {
+    waypoints?: Waypoint[]
+    radios?: Radio[]
+    team?: number | null        // the selected team
+    waypoint?: number | null    // the selected waypoint
+    onPick?: (stack: Stack) => void
+    hidden?: number | null
+}
+
+function draw({ waypoints = [], radios = [], team = null, waypoint = null, onPick, hidden = null }: Drawn) {
+    render(
+        <PeopleContext value={{ roster: [], people: [], radios, groups: [], run: async () => '' }}>
+            <WaypointsContext value={board(waypoints)}>
+                <MarkersOnMap selectedTeam={team} selectedWaypoint={waypoint} onPick={onPick} hidden={hidden} />
+            </WaypointsContext>
+        </PeopleContext>,
+    )
+    return screen.queryAllByTestId('marker')
+}
+
+// The words beside a marker: a waypoint's name, or a stack's count.
+const label = (marker: HTMLElement) => marker.querySelector('[data-label]')?.textContent ?? ''
+const labels = () => screen.getAllByTestId('marker').map(label)
+
+// A color as the pretend browser writes it back.
+function written(color: string): string {
+    const probe = document.createElement('span')
+    probe.style.background = color
+    return probe.style.background
+}
+
+// A team of one searcher, at a place of its own unless one is given.
+function team(id: number, group_id: number | null, lat = 31.4 + id / 100, lon = -110.6): Radio {
+    return {
+        id, node_num: 100 + id, kind: 'searcher', group_id,
+        people: [{ id: 50 + id, name: `Searcher ${id}`, placeholder: false }],
+        last_position: { time: '2025-04-14T11:19:00Z', lat, lon, elevation: 1500 },
+    }
+}
+
+// Waypoints
+
+test('each waypoint is a marker at its place, with its name beside its kind\'s icon', () => {
+    const markers = draw({ waypoints: ARIZONA07.slice(0, 5) })
+    expect(markers.map(label)).toEqual(['Command post', 'Start point', 'LZ 1', 'Boot prints', 'Helicopter sighting'])
+    expect(markers[3].dataset.place).toBe('31.5071259,-110.6693262')
+    expect(within(markers[3]).getByTitle('Boot prints · Evidence')).toBeTruthy()
+    expect(markers[3].querySelector('svg')).toBeTruthy()
+})
+
+test('a click on a lone waypoint picks it, and the click does not reach the map under it', () => {
+    const onPick = vi.fn()
+    const markers = draw({ waypoints: ARIZONA07, onPick })
+    fireEvent.click(markers[3])
+    expect(onPick).toHaveBeenCalledWith({ teams: [], waypoints: [4] })
+    expect(stopped.count).toBe(1)
+})
+
+test('a click where two waypoints sit on the same spot picks both', () => {
+    const onPick = vi.fn()
+    const markers = draw({ waypoints: ARIZONA07, onPick })
+    fireEvent.click(markers[5])  // Subject found, about 4 m from the helicopter sighting
+    expect(onPick).toHaveBeenCalledWith({ teams: [], waypoints: [5, 6] })
+})
+
+test('waypoints on the same spot share one label that counts them, so their names do not print over each other', () => {
+    draw({ waypoints: ARIZONA07 })
+    expect(labels()).toEqual(['Command post', 'Start point', 'LZ 1', 'Boot prints', '', '2 waypoints'])
+})
+
+test('zooming out brings more waypoints onto one spot, and the labels follow', () => {
+    draw({ waypoints: ARIZONA07 })
+    // A tenth of the scale: the command post and the start point, 140 m apart, now touch.
+    act(() => pretend.zoomTo(10_000))
+    expect(labels()).toEqual(['', '2 waypoints', 'LZ 1', 'Boot prints', '', '2 waypoints'])
+})
+
+test('while another tool is in use a marker takes no clicks, so they reach the map', () => {
+    const markers = draw({ waypoints: ARIZONA07, radios: [team(4, 2)] })
+    for (const marker of markers) expect(marker.style.pointerEvents).toBe('none')
+    fireEvent.click(markers[0])
+    expect(stopped.count).toBe(0)
+})
+
+test('the selected waypoint is marked', () => {
+    const markers = draw({ waypoints: ARIZONA07, waypoint: 4, onPick: () => {} })
+    const current = markers.filter((marker) => marker.querySelector('[aria-current="true"]'))
+    expect(current.map(label)).toEqual(['Boot prints'])
+})
+
+test('a waypoint being edited is not drawn; its pin is', () => {
+    const markers = draw({ waypoints: ARIZONA07, hidden: 4 })
+    expect(markers.map(label)).not.toContain('Boot prints')
+    expect(markers).toHaveLength(5)
+})
+
+// Teams
+
+test("each team is a circle at its newest position, in its group's color and grey for none, with its short name inside", () => {
+    const markers = draw({ radios: [team(1, 1), team(4, null)] })
+    expect(markers.map((marker) => marker.textContent)).toEqual(['R1', 'R4'])
+    expect(markers[0].dataset.place).toBe('31.41,-110.6')
+    expect((within(markers[0]).getByText('R1')).style.background).toBe(written(groupColor(1)))
+    expect((within(markers[1]).getByText('R4')).style.background).toBe(written(NO_GROUP_COLOR))
+    expect(within(markers[1]).getByTitle('Radio 4 · No group')).toBeTruthy()
+})
+
+test('only a team that has reported has a marker: not the command post radio, a relay, a radio with nobody, or a team with no position', () => {
+    const markers = draw({ radios: RADIOS })  // radios 1, 2 and 7 are teams with a position
+    expect(markers.map((marker) => within(marker).getByText(/^R\d$/).textContent)).toEqual(['R1', 'R2', 'R7'])
+})
+
+test('a click on a lone team picks it, and the click does not reach the map under it', () => {
+    const onPick = vi.fn()
+    const markers = draw({ radios: [team(1, 1), team(4, null)], onPick })
+    fireEvent.click(markers[1])
+    expect(onPick).toHaveBeenCalledWith({ teams: [4], waypoints: [] })
+    expect(stopped.count).toBe(1)
+})
+
+test('teams on the same spot share one label that counts them, and a click picks them all', () => {
+    const onPick = vi.fn()
+    const markers = draw({ radios: RADIOS, onPick })  // all three at the same place
+    expect(labels()).toEqual(['', '', '3 teams'])
+    fireEvent.click(markers[2])
+    expect(onPick).toHaveBeenCalledWith({ teams: [1, 2, 7], waypoints: [] })
+})
+
+test('teams and waypoints on the same spot are one stack, and a click picks them all', () => {
+    const onPick = vi.fn()
+    // The sample's teams are about 5 m from the command post.
+    const markers = draw({ waypoints: ARIZONA07.slice(0, 1), radios: RADIOS, onPick })
+    expect(labels()).toEqual(['', '', '', '3 teams · 1 waypoint'])
+    fireEvent.click(markers[0])
+    expect(onPick).toHaveBeenCalledWith({ teams: [1, 2, 7], waypoints: [1] })
+})
+
+test('one team on one waypoint is counted in the singular', () => {
+    draw({ waypoints: ARIZONA07.slice(0, 1), radios: RADIOS.slice(0, 1) })
+    expect(labels()).toEqual(['', '1 team · 1 waypoint'])
+})
+
+test('the selected team is marked', () => {
+    const markers = draw({ radios: [team(1, 1), team(4, null)], team: 4, onPick: () => {} })
+    const current = markers.filter((marker) => marker.querySelector('[aria-current="true"]'))
+    expect(current.map((marker) => marker.textContent)).toEqual(['R4'])
+})

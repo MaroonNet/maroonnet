@@ -26,6 +26,12 @@ export const groupColor = (groupId: number) => GROUP_COLORS[(groupId - 1) % GROU
 export const NO_GROUP_COLOR = '#6b6b6b'
 export const teamColor = (groupId: number | null) => groupId === null ? NO_GROUP_COLOR : groupColor(groupId)
 
+// A team's short name, as its marker on the map has it: "R4".
+export const mapName = (radioId: number) => `R${radioId}`
+
+// The teams that have a marker on the map: those whose radio has reported a position.
+export const teamsOnMap = (radios: Radio[]) => teamsOf(radios).filter((radio) => radio.last_position !== null)
+
 export const KIND_LABELS: Record<RadioKind, string> = {
     searcher: 'Searcher', command_post: 'Command post', relay: 'Relay', aerial: 'Aerial',
 }
