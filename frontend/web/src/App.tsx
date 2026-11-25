@@ -1,4 +1,3 @@
-import type { Map as MapLibreMap } from 'maplibre-gl'
 import { useState } from 'react'
 import MapControls from './frame/MapControls.tsx'
 import Panel from './frame/Panel.tsx'
@@ -18,14 +17,12 @@ import SettingsPanel from './settings/SettingsPanel.tsx'
 function App() {
   const [openPanel, setOpenPanel] = useState<PanelId | null>(null)  // one panel is open at a time
   const [tool, setTool] = useState<ToolId>('select')  // the picked map tool
-  // The MapLibre map, handed up by MissionMap once it is ready, for the controls outside it.
-  const [map, setMap] = useState<MapLibreMap | null>(null)
   // The Layers panel changes these two lists and the map draws from them. They are held here
   // so the choices are kept while the panel is closed.
   const [hidden, setHidden] = useState<string[]>([])  // the layer groups the user has hidden
   const [pickedUses, setPickedUses] = useState<string[]>([])  // the trail uses ticked; none: all trails
 
-  useMapOverSearchArea(map, openPanel !== null)
+  useMapOverSearchArea(openPanel !== null)
 
   // Pressing the open panel's button closes it; pressing another opens that one in its place.
   function pressRailButton(id: PanelId) {
@@ -64,13 +61,13 @@ function App() {
         </Panel>
       )}
       <main className="relative z-0 min-w-0 flex-1">
-        <MissionMap hidden={hidden} pickedUses={pickedUses} onMap={setMap} />
+        <MissionMap hidden={hidden} pickedUses={pickedUses} />
         {/* What floats over the map's top left corner. It moves right when a panel opens,
             so the panel does not cover it. */}
         <div className={`absolute top-3.5 left-3.5 z-10 flex flex-col items-start gap-2 ${openPanel ? 'translate-x-panel' : ''}`}>
           <Toolbar tool={tool} onPick={setTool} />
         </div>
-        {map && <MapControls map={map} />}
+        <MapControls />
       </main>
       <StillRunningBox />
     </div>

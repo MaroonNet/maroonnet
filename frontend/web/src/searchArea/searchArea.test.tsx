@@ -1,4 +1,3 @@
-import type { Map as MapLibreMap } from 'maplibre-gl'
 import { cleanup, render, waitFor } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { MissionContext, type OpenMission } from '../mission/mission.ts'
@@ -31,21 +30,27 @@ function pretendBackend(areas: Record<string, SearchArea | null>) {
     return backend
 }
 
+// The shared board the map is read from. Each test puts its own pretend map on it.
+const board = vi.hoisted(() => ({ map: null as unknown }))
+vi.mock('../map/missionMap.ts', () => ({ useMissionMap: () => board.map }))
+
 // A pretend map that records where it was told to go.
 function pretendMap() {
-    return { fitBounds: vi.fn() }
+    const map = { fitBounds: vi.fn() }
+    board.map = map
+    return map
 }
 
 // Draws nothing; it only runs the piece under test, with a mission on the board.
-function Screen({ map, open, panelOpen = false }: { map: unknown, open: OpenMission | null, panelOpen?: boolean }) {
+function Screen({ open, panelOpen = false }: { open: OpenMission | null, panelOpen?: boolean }) {
     return (
         <MissionContext value={{ mission: open, loadFailed: false, run: async () => '' }}>
-            <Mover map={map as MapLibreMap} panelOpen={panelOpen} />
+            <Mover panelOpen={panelOpen} />
         </MissionContext>
     )
 }
-function Mover({ map, panelOpen }: { map: MapLibreMap, panelOpen: boolean }) {
-    useMapOverSearchArea(map, panelOpen)
+function Mover({ panelOpen }: { panelOpen: boolean }) {
+    useMapOverSearchArea(panelOpen)
     return null
 }
 
@@ -53,7 +58,7 @@ test('opening a mission moves the map over its search area', async () => {
     const backend = pretendBackend({ az07: ARIZONA07_AREA })
     const map = pretendMap()
     backend.open = 'az07'
-    render(<Screen map={map} open={mission('az07')} />)
+    render(<Screen open={mission('az07')} />)
 
     await waitFor(() => expect(map.fitBounds).toHaveBeenCalledTimes(1))
     // West and south first, then east and north, as MapLibre takes them.
@@ -64,7 +69,7 @@ test('a mission with no search area leaves the map where it was', async () => {
     const backend = pretendBackend({ bc: null })
     const map = pretendMap()
     backend.open = 'bc'
-    render(<Screen map={map} open={mission('bc')} />)
+    render(<Screen open={mission('bc')} />)
 
     await waitFor(() => expect(backend.asked).toBe(1))
     expect(map.fitBounds).not.toHaveBeenCalled()
@@ -73,7 +78,7 @@ test('a mission with no search area leaves the map where it was', async () => {
 test('with no mission open the search area is not asked for', async () => {
     const backend = pretendBackend({})
     const map = pretendMap()
-    render(<Screen map={map} open={null} />)
+    render(<Screen open={null} />)
 
     await Promise.resolve()
     expect(backend.asked).toBe(0)
@@ -84,16 +89,16 @@ test('the map moves again when another mission is opened, and not when the same 
     const backend = pretendBackend({ az07: ARIZONA07_AREA, other: { min_lat: 40, min_lon: -106, max_lat: 40.1, max_lon: -105.9 } })
     const map = pretendMap()
     backend.open = 'az07'
-    const screen = render(<Screen map={map} open={mission('az07')} />)
+    const screen = render(<Screen open={mission('az07')} />)
     await waitFor(() => expect(map.fitBounds).toHaveBeenCalledTimes(1))
 
     // The same mission with a change, such as a started session: the map stays.
-    screen.rerender(<Screen map={map} open={{ ...mission('az07'), status: 'active' }} />)
+    screen.rerender(<Screen open={{ ...mission('az07'), status: 'active' }} />)
     await Promise.resolve()
     expect(backend.asked).toBe(1)
 
     backend.open = 'other'
-    screen.rerender(<Screen map={map} open={mission('other')} />)
+    screen.rerender(<Screen open={mission('other')} />)
     await waitFor(() => expect(map.fitBounds).toHaveBeenCalledTimes(2))
     expect(map.fitBounds.mock.calls[1][0]).toEqual([[-106, 40], [-105.9, 40.1]])
 })
@@ -102,7 +107,7 @@ test('with a panel open the area is fitted beside the panel, not under it', asyn
     const backend = pretendBackend({ az07: ARIZONA07_AREA })
     const map = pretendMap()
     backend.open = 'az07'
-    render(<Screen map={map} open={mission('az07')} panelOpen />)
+    render(<Screen open={mission('az07')} panelOpen />)
 
     await waitFor(() => expect(map.fitBounds).toHaveBeenCalledTimes(1))
     const { padding } = map.fitBounds.mock.calls[0][1]

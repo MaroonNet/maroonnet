@@ -1,11 +1,12 @@
-import { setWorkerUrl, type FilterSpecification, type Map as MapLibreMap } from "maplibre-gl"
+import { setWorkerUrl, type FilterSpecification } from "maplibre-gl"
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
-import { useCallback } from 'react'
+import type { ReactNode } from 'react'
 import Map, { type MapRef } from 'react-map-gl/maplibre'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { sendError } from '../diagnostics/errorLog'
 import { INITIAL_VIEW, MAX_ZOOM } from "./config"
 import { style, styleError } from './mapStyle'
+import { MAP_ID } from './missionMap'
 import { hideGroups, narrowTrails, type StyleMetadata } from './styleChoices'
 
 setWorkerUrl(workerUrl)
@@ -15,23 +16,21 @@ let tileErrorSent = false  // a tile failure repeats for every tile, so only the
 type Props = {
     hidden: string[]        // the layer groups the user has hidden
     pickedUses: string[]    // the trail uses ticked; none ticked: all trails
-    onMap: (map: MapLibreMap) => void  // called once with the MapLibre map, as soon as it exists
+    children?: ReactNode    // what is drawn on the map: mission layers and the tools' shapes
 }
 
-function MissionMap({ hidden, pickedUses, onMap }: Props) {
-    // react-map-gl calls this with the map as soon as it exists, before its tiles have loaded,
-    // so the controls outside the map can show straight away. useCallback keeps it the same
-    // function between redraws, so it is called once and not on every redraw.
-    const whenMapExists = useCallback((ref: MapRef | null) => {
-        if (!ref) return
-        const map = ref.getMap()
-        // Turning by keyboard and by two fingers has no setting on <Map>, so it is switched
-        // off here. Two-finger zoom still works.
-        map.keyboard.disableRotation()
-        map.touchZoomRotate.disableRotation()
-        onMap(map)
-    }, [onMap])
+// react-map-gl calls this with the map as soon as it exists. Turning by keyboard and by two
+// fingers has no setting on <Map>, so it is switched off here. Two-finger zoom still works.
+function whenMapExists(ref: MapRef | null) {
+    if (!ref) return
+    const map = ref.getMap()
+    map.keyboard.disableRotation()
+    map.touchZoomRotate.disableRotation()
+}
 
+// The map. It puts itself on the shared board under MAP_ID, where the pieces outside it
+// find it (useMissionMap).
+function MissionMap({ hidden, pickedUses, children }: Props) {
     if (!style) {
         return (
             <p style={{ padding: 16, font: '14px system-ui, sans-serif' }}>
@@ -46,6 +45,7 @@ function MissionMap({ hidden, pickedUses, onMap }: Props) {
     const trailFilter = pickedFilters.length ? ['any', ...pickedFilters] as FilterSpecification : undefined
     return (
         <Map
+            id={MAP_ID}
             ref={whenMapExists}
             initialViewState={INITIAL_VIEW}
             mapStyle={narrowTrails(hideGroups(style, hidden), trailFilter)}
@@ -62,7 +62,9 @@ function MissionMap({ hidden, pickedUses, onMap }: Props) {
                 }
                 sendError('map', e.error)
             }}
-        />
+        >
+            {children}
+        </Map>
     )
 }
 

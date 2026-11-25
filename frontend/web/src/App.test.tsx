@@ -23,16 +23,17 @@ const fakeMap = vi.hoisted(() => {
 
 // The real map needs the backend and a real browser, so the tests draw a box in its place.
 // The box prints the lists the map was handed, so a test can read which layers it was told
-// to hide, and it hands the pretend map up as the real one does when it is ready.
-vi.mock('./map/MissionMap.tsx', async () => {
-    const { useEffect } = await import('react')
-    type Props = { hidden: string[], pickedUses: string[], onMap: (map: unknown) => void }
-    function StandInMap({ onMap, ...lists }: Props) {
-        useEffect(() => onMap(fakeMap), [onMap])
-        return <div data-testid="map">{JSON.stringify(lists)}</div>
+// to hide.
+vi.mock('./map/MissionMap.tsx', () => {
+    type Props = { hidden: string[], pickedUses: string[] }
+    function StandInMap({ hidden, pickedUses }: Props) {
+        return <div data-testid="map">{JSON.stringify({ hidden, pickedUses })}</div>
     }
     return { default: StandInMap }
 })
+
+// The pieces outside the map read it from the shared board. Here the board holds the pretend map.
+vi.mock('./map/missionMap.ts', () => ({ useMissionMap: () => fakeMap }))
 
 // The style comes from the backend too. This one lists two layer groups and two trail uses.
 vi.mock('./map/mapStyle.ts', () => ({

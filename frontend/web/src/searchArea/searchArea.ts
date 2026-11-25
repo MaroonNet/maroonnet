@@ -1,6 +1,6 @@
-import type { Map as MapLibreMap } from 'maplibre-gl'
 import { useEffect, useRef } from 'react'
 import { sendError } from '../diagnostics/errorLog.ts'
+import { useMissionMap } from '../map/missionMap.ts'
 import { ask, useMission } from '../mission/mission.ts'
 
 // The open mission's search area, as the backend answers it (backend/search_area/routes.py):
@@ -23,7 +23,8 @@ const PANEL_WIDTH = 300
 // Moves the map over the open mission's search area: once when the page opens with a
 // mission open, and again each time another mission is opened. A mission with no search
 // area leaves the map where it was. panelOpen: a panel is covering the map's left side.
-export function useMapOverSearchArea(map: MapLibreMap | null, panelOpen: boolean) {
+export function useMapOverSearchArea(panelOpen: boolean) {
+    const map = useMissionMap()
     const missionId = useMission().mission?.id
     // Kept in a ref (a box whose contents can change without redrawing) so that opening or
     // closing a panel does not move the map; only opening a mission does.

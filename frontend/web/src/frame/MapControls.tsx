@@ -1,20 +1,22 @@
 import { IconList, IconMinus, IconPlus, type Icon } from '@tabler/icons-react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { useEffect, useState } from 'react'
+import { useMissionMap } from '../map/missionMap.ts'
 import { useSettings, type Units } from '../settings/settings.ts'
 import { metersPerPixel, scaleBar } from './scaleBar.ts'
 
 const SCALE_MAX = 170  // the widest the scale bar is drawn, in pixels
 const BOX = 'pointer-events-auto border border-ink bg-panel shadow-[0_2px_10px_rgb(32_30_24/0.22)]'  // a floating box
 
-type Props = {
-    map: MapLibreMap    // the map the controls act on
+// The controls at the bottom right of the map. They show once the map exists.
+function MapControls() {
+    const map = useMissionMap()
+    return map && <Controls map={map} />
 }
 
-// The controls at the bottom right of the map, raised to sit above the map's credits line
-// in the corner. The stack itself lets the pointer through to the map; only the boxes in it
-// take presses.
-function MapControls({ map }: Props) {
+// The controls, raised to sit above the map's credits line in the corner. The stack itself
+// lets the pointer through to the map; only the boxes in it take presses.
+function Controls({ map }: { map: MapLibreMap }) {
     // Where the map is now. It is read again each time the map moves, so the zoom buttons
     // and the scale bar follow it.
     const [view, setView] = useState(() => readView(map))
