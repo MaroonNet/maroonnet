@@ -4,9 +4,14 @@
     POST   /api/mission/sectors               add one, drawn, named S and its number
     PUT    /api/mission/sectors/{id}/corners  change a never-assigned sector's shape
     DELETE /api/mission/sectors/{id}          delete a never-assigned sector
+    POST   /api/mission/sectors/{id}/assign   give it to a group, which lets go of the one it held
+    POST   /api/mission/sectors/{id}/release  take its group off it
+    POST   /api/mission/sectors/{id}/entered  a team of its group has entered it (temporary, until radios report)
+    POST   /api/mission/sectors/{id}/complete mark it completed
 
 A sector is kept in two tables: search_sector for the sector, search_sector_point for its
-corners, one row each. Adding or changing one writes both in the same transaction.
+corners, one row each. Adding or changing one writes both in the same transaction. The
+rules of the last four routes are in life.py.
 """
 
 from datetime import datetime
@@ -23,6 +28,7 @@ from missiondb.models import (
 )
 from missiondb.sqltypes import utcnow
 
+from . import life
 from .shape import inside, sides_cross
 
 router = APIRouter(prefix="/api")
@@ -51,15 +57,35 @@ class Shape(BaseModel):
         return [(corner.lat, corner.lon) for corner in self.corners]
 
 
+class Send(BaseModel):
+    """One send of a sector to one radio. Nothing the app does makes one yet; a mission
+    file recorded with radios holds them."""
+    radio_id: int
+    sent_time: datetime
+    ack_time: datetime | None  # when the radio acknowledged it, if it has
+
+
 class SectorFacts(BaseModel):
     id: int
     name: str                   # S and the id: "S4"
     status: SectorStatus        # drawn, searching, partial or completed
     corners: list[Corner]
     group_id: int | None        # the group that holds it now, or none
+    assigned_time: datetime | None  # when that group was given it
+    entered_time: datetime | None   # when a team of that group first entered it, since then
     can_edit: bool              # its shape can be changed and it can be deleted
     created_time: datetime
     completed_time: datetime | None
+    completed_by: int | None    # the group that held it when it was completed
+    sends: list[Send]           # each time it was sent to a radio, oldest first
+
+
+class Assignment(BaseModel):
+    group_id: int
+
+
+class Entry(BaseModel):
+    radio_id: int  # the team that entered
 
 
 @router.get("/mission/sectors")
@@ -107,6 +133,38 @@ def delete_sector(sector_id: int, db: Session = Depends(changeable_session)) -> 
     return Response(status_code=204)
 
 
+@router.post("/mission/sectors/{sector_id}/assign")
+def post_assign(sector_id: int, to: Assignment, db: Session = Depends(changeable_session)) -> SectorFacts:
+    sector = find(db, sector_id)
+    life.assign(db, sector, to.group_id)
+    db.commit()
+    return facts(db, sector)
+
+
+@router.post("/mission/sectors/{sector_id}/release")
+def post_release(sector_id: int, db: Session = Depends(changeable_session)) -> SectorFacts:
+    sector = find(db, sector_id)
+    life.release(db, sector)
+    db.commit()
+    return facts(db, sector)
+
+
+@router.post("/mission/sectors/{sector_id}/entered")
+def post_entered(sector_id: int, entry: Entry, db: Session = Depends(changeable_session)) -> SectorFacts:
+    sector = find(db, sector_id)
+    life.mark_entered(db, sector, entry.radio_id)
+    db.commit()
+    return facts(db, sector)
+
+
+@router.post("/mission/sectors/{sector_id}/complete")
+def post_complete(sector_id: int, db: Session = Depends(changeable_session)) -> SectorFacts:
+    sector = find(db, sector_id)
+    life.complete(db, sector)
+    db.commit()
+    return facts(db, sector)
+
+
 def find(db: Session, sector_id: int) -> SearchSector:
     sector = db.get(SearchSector, sector_id)
     if sector is None:
@@ -149,14 +207,31 @@ def facts(db: Session, sector: SearchSector) -> SectorFacts:
     sector_id = sector.search_sector_id
     points = db.exec(select(SearchSectorPoint).where(SearchSectorPoint.search_sector_id == sector_id)
                      .order_by(SearchSectorPoint.point_order))
-    holder = db.exec(select(SectorAssignment.search_group_id).where(
-        SectorAssignment.search_sector_id == sector_id, SectorAssignment.to_time.is_(None))).first()
+    hold = life.open_hold(db, sector_id)
+    entered = db.exec(select(func.min(SectorEntry.entered_time)).where(
+        SectorEntry.search_sector_id == sector_id, SectorEntry.entered_time >= hold.from_time)).one() if hold else None
+    sends = db.exec(select(SectorDispatch).where(SectorDispatch.search_sector_id == sector_id)
+                    .order_by(SectorDispatch.sent_time, SectorDispatch.dispatch_id))
     return SectorFacts(
         id=sector_id, name=sector.name, status=sector.status,
         corners=[Corner(lat=point.lat, lon=point.lon) for point in points],
-        group_id=holder, can_edit=locked_because(db, sector) is None,
+        group_id=hold.search_group_id if hold else None,
+        assigned_time=hold.from_time if hold else None,
+        entered_time=entered if sector.status == SectorStatus.SEARCHING else None,
+        can_edit=locked_because(db, sector) is None,
         created_time=sector.created_time, completed_time=sector.completed_time,
+        completed_by=completed_by(db, sector),
+        sends=[Send(radio_id=send.team_id, sent_time=send.sent_time, ack_time=send.ack_time) for send in sends],
     )
+
+
+def completed_by(db: Session, sector: SearchSector) -> int | None:
+    """The group whose hold ended when the sector was completed."""
+    if sector.status != SectorStatus.COMPLETED:
+        return None
+    return db.exec(select(SectorAssignment.search_group_id).where(
+        SectorAssignment.search_sector_id == sector.search_sector_id,
+        SectorAssignment.to_time == sector.completed_time)).first()
 
 
 def sectors_outside(db: Session, area) -> list[str]:
