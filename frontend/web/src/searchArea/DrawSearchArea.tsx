@@ -4,8 +4,10 @@ import Button from '../frame/Button.tsx'
 import Card from '../frame/Card.tsx'
 import HintLine from '../frame/HintLine.tsx'
 import { drawRectangle, type RectangleDrawing } from '../map/drawRectangle.ts'
-import { rectangleSize, type Bounds } from '../map/geo.ts'
+import { insideBounds, rectangleSize, type Bounds } from '../map/geo.ts'
 import { useMissionMap } from '../map/missionMap.ts'
+import { useSectors } from '../sectors/sectors.ts'
+import { nameList } from '../sectors/sectorWords.ts'
 import { useSettings } from '../settings/settings.ts'
 import { formatArea, formatDistance } from '../settings/units.ts'
 import { useSearchArea } from './searchArea.ts'
@@ -16,11 +18,13 @@ type Props = {
 }
 
 // The Draw Search Area tool, drawn while it is the picked tool. The user drags a rectangle
-// on the map; the New Search Area card then shows its size, and Apply saves it in place of
-// the mission's current search area. Cancel or Escape takes the rectangle away.
+// on the map; the New Search Area card then shows its size and how many sectors it holds,
+// and Apply saves it in place of the mission's current search area. A rectangle that would
+// leave a sector outside cannot be applied. Cancel or Escape takes the rectangle away.
 function DrawSearchArea({ hintSlot, onDone }: Props) {
     const map = useMissionMap()
     const { save } = useSearchArea()
+    const { sectors } = useSectors()
     const { units } = useSettings().settings
     const [dragged, setDragged] = useState<Bounds | null>(null)  // the rectangle while it is dragged
     const [drawn, setDrawn] = useState<Bounds | null>(null)      // the finished rectangle, on the card
@@ -72,6 +76,8 @@ function DrawSearchArea({ hintSlot, onDone }: Props) {
 
     const shown = dragged ?? drawn
     const size = shown && rectangleSize(shown)
+    // The search area is the sectors' boundary, so a new one must hold every saved sector.
+    const outside = drawn ? sectors.filter((sector) => !insideBounds(sector.corners, drawn)).map((sector) => sector.name) : []
     const hint = drawn ? 'Apply to save the search area, or drag again to redraw it.' : 'Drag on the map to draw the search area.'
     return (
         <>
@@ -89,11 +95,18 @@ function DrawSearchArea({ hintSlot, onDone }: Props) {
                         <dd className="font-mono text-figure">{formatDistance(size.height, units)}</dd>
                         <dt className="font-medium text-muted">Area</dt>
                         <dd className="font-mono text-figure">{formatArea(size.area, units)}</dd>
+                        <dt className="font-medium text-muted">Sectors</dt>
+                        <dd className="font-mono text-figure">{sectors.length - outside.length} inside</dd>
                     </dl>
+                    {outside.length > 0 && (
+                        <p className="pt-2 font-medium text-red">
+                            {nameList(outside)} would be outside this search area. Drag a rectangle that holds them.
+                        </p>
+                    )}
                     {/* role="alert" has a screen reader read the line out when it appears. */}
                     {failure && <p role="alert" className="pt-2 font-medium text-red">{failure}</p>}
                     <div className="flex gap-2 pt-3">
-                        <Button look="dark" disabled={busy} onClick={() => apply(drawn)} className="flex-1">Apply</Button>
+                        <Button look="dark" disabled={busy || outside.length > 0} onClick={() => apply(drawn)} className="flex-1">Apply</Button>
                         <Button disabled={busy} onClick={cancel} className="flex-1">Cancel</Button>
                     </div>
                 </Card>

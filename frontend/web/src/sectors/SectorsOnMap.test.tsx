@@ -47,12 +47,12 @@ function sector(id: number, status: Sector['status'], group_id: number | null = 
     }
 }
 
-function draw(sectors: Sector[], selected: number | null = null, onPick?: (id: number) => void) {
+function draw(sectors: Sector[], selected: number | null = null, onPick?: (id: number) => void, hidden: number | null = null) {
     const addImage = vi.fn((name: string) => { pretend.map.images.add(name) })
     pretend.map.addImage = addImage
     render(
-        <SectorsContext value={{ sectors, loadedFor: 'az07', add: async () => '' }}>
-            <SectorsOnMap selected={selected} onPick={onPick} />
+        <SectorsContext value={{ sectors, loadedFor: 'az07', add: async () => '', changeShape: async () => '', remove: async () => '' }}>
+            <SectorsOnMap selected={selected} onPick={onPick} hidden={hidden} />
         </SectorsContext>,
     )
     const shapes = JSON.parse(screen.getByTestId('source').firstChild!.textContent!)
@@ -82,6 +82,11 @@ test("each sector has one label point, at the middle of its ground, so a sector 
     expect(points).toHaveLength(1)
     expect(points[0].properties).toEqual({ id: 7, name: 'S7', look: 'drawn' })
     expect(layer('sectors-label')).toContain('["==",["geometry-type"],"Point"]')
+})
+
+test('a sector whose shape is being edited is left off, so only the shape being edited shows', () => {
+    const { shapes } = draw([sector(1, 'completed'), sector(7, 'drawn')], 7, undefined, 7)
+    expect(shapes.features.map((f: Shape & { properties: { id: number } }) => f.properties.id)).toEqual([1, 1])  // S1's shape and its label point
 })
 
 test('a sector is drawn round its corners and back to the first, longitude first', () => {

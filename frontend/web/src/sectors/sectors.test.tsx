@@ -33,6 +33,19 @@ function pretendBackend(sectors: Record<string, Sector[]>) {
     const backend = { open: '', asked: 0, refuses: '', sent: null as unknown }
     const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
     vi.stubGlobal('fetch', vi.fn(async (address: string, request?: RequestInit) => {
+        const one = address.match(/^\/api\/mission\/sectors\/(\d+)(\/corners)?$/)  // a route for one sector
+        if (one) {
+            if (backend.refuses) return json({ detail: backend.refuses }, 409)
+            const id = Number(one[1])
+            if (request?.method === 'DELETE') {
+                sectors[backend.open] = sectors[backend.open].filter((s) => s.id !== id)
+                return new Response(null, { status: 204 })
+            }
+            backend.sent = JSON.parse(request!.body as string)
+            const changed = { ...sectors[backend.open].find((s) => s.id === id)!, corners: (backend.sent as { corners: Sector['corners'] }).corners }
+            sectors[backend.open] = sectors[backend.open].map((s) => s.id === id ? changed : s)
+            return json(changed)
+        }
         if (address !== '/api/mission/sectors') return new Response(null, { status: 204 })
         if (request?.method === 'POST') {
             if (backend.refuses) return json({ detail: backend.refuses }, 409)
@@ -51,7 +64,12 @@ let board: SectorsBoard  // the board as it last was, for a test to read and cal
 function Reader() {
     const read = useSectors()
     useEffect(() => { board = read })
-    return <p data-testid="names">{read.sectors.map((s) => s.name).join(' ')}</p>
+    return (
+        <>
+            <p data-testid="names">{read.sectors.map((s) => s.name).join(' ')}</p>
+            <p data-testid="corners">{read.sectors.map((s) => s.corners.length).join(' ')}</p>
+        </>
+    )
 }
 function Screen({ open }: { open: OpenMission | null }) {
     return (
@@ -119,6 +137,48 @@ test('a new sector is sent with its corners, and the board shows it once saved',
     expect(reason).toBe('')
     expect(backend.sent).toEqual({ corners })
     expect(names()).toBe('S1')
+})
+
+// Opens Bear Creek with S1 and S2 on the board, three corners each.
+async function bearCreekWithTwo() {
+    const backend = pretendBackend({ bc: [sector(1), sector(2)] })
+    backend.open = 'bc'
+    render(<Screen open={mission('bc')} />)
+    await waitFor(() => expect(names()).toBe('S1 S2'))
+    return backend
+}
+
+test("a sector's new shape is sent, and the board shows it once saved", async () => {
+    const backend = await bearCreekWithTwo()
+    const four = [{ lat: 40.0, lon: -105.6 }, { lat: 40.05, lon: -105.6 }, { lat: 40.05, lon: -105.55 }, { lat: 40.0, lon: -105.55 }]
+
+    let reason: string | undefined
+    await act(async () => { reason = await board.changeShape(2, four) })
+
+    expect(reason).toBe('')
+    expect(backend.sent).toEqual({ corners: four })
+    expect(screen.getByTestId('corners').textContent).toBe('3 4')
+})
+
+test('a deleted sector leaves the board once the backend has deleted it', async () => {
+    await bearCreekWithTwo()
+
+    let reason: string | undefined
+    await act(async () => { reason = await board.remove(1) })
+
+    expect(reason).toBe('')
+    expect(names()).toBe('S2')
+})
+
+test("a refused change or delete leaves the board as it was, and the backend's reason is given", async () => {
+    const backend = await bearCreekWithTwo()
+    backend.refuses = 'S1 has been assigned, so it cannot be deleted.'
+
+    let reason: string | undefined
+    await act(async () => { reason = await board.remove(1) })
+
+    expect(reason).toBe('S1 has been assigned, so it cannot be deleted.')
+    expect(names()).toBe('S1 S2')
 })
 
 test("a refused sector is not put on the board, and the backend's reason is given", async () => {

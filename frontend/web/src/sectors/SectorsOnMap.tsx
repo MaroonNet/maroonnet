@@ -14,6 +14,7 @@ const byLook = (values: Record<Look, string | number>): ExpressionSpecification 
 type Props = {
     selected: number | null             // the id of the selected sector, drawn with a stronger outline
     onPick?: (id: number) => void       // given while a click on a sector picks it (the Select tool)
+    hidden?: number | null              // a sector whose shape is being edited, drawn by the editing instead
 }
 
 // The layer a click on a sector is read from: every sector, filled with nothing visible.
@@ -22,13 +23,14 @@ const HIT = 'sectors-hit'
 // The saved sectors on the map: an outline in the look's color, a light green fill for a
 // completed sector, orange stripes for a partial one, and the name in the middle. It is
 // drawn inside the map (a child of MissionMap), above the search area line.
-function SectorsOnMap({ selected, onPick }: Props) {
+function SectorsOnMap({ selected, onPick, hidden = null }: Props) {
     const { sectors } = useSectors()
     useStripes()
     usePicking(onPick)
     const isSelected: ExpressionSpecification = ['==', ['get', 'id'], selected ?? -1]
+    const shown = sectors.filter((sector) => sector.id !== hidden)
     return (
-        <Source id="sectors" type="geojson" data={sectorShapes(sectors)}>
+        <Source id="sectors" type="geojson" data={sectorShapes(shown)}>
             <Layer id={HIT} type="fill" paint={{ 'fill-color': '#000000', 'fill-opacity': 0 }} />
             <Layer
                 id="sectors-fill"

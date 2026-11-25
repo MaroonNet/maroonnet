@@ -17,6 +17,7 @@ import SearchAreaOutline from './searchArea/SearchAreaOutline.tsx'
 import { useMapOverSearchArea, useSearchArea } from './searchArea/searchArea.ts'
 import type { SectorShape } from './map/drawSector.ts'
 import DrawSector from './sectors/DrawSector.tsx'
+import EditSectorShape from './sectors/EditSectorShape.tsx'
 import SectorCard from './sectors/SectorCard.tsx'
 import SectorsPanel from './sectors/SectorsPanel.tsx'
 import SectorsOnMap from './sectors/SectorsOnMap.tsx'
@@ -61,6 +62,10 @@ function App() {
   // drawing tool has a card of its own up.
   const [selectedSector, setSelectedSector] = useState<number | null>(null)
   const drawing = tool === 'sector' || tool === 'search-area'
+  // The sector whose shape is being edited, from its card's Edit Shape. Picking another
+  // tool ends the editing without saving.
+  const [editingSector, setEditingSector] = useState<number | null>(null)
+  if (editingSector !== null && tool !== 'select') setEditingSector(null)
 
   // Pressing the open panel's button closes it; pressing another opens that one in its place.
   function pressRailButton(id: PanelId) {
@@ -111,7 +116,11 @@ function App() {
       <main className="relative z-0 min-w-0 flex-1">
         <MissionMap hidden={hidden} pickedUses={pickedUses}>
           <SearchAreaOutline />
-          <SectorsOnMap selected={selectedSector} onPick={tool === 'select' ? setSelectedSector : undefined} />
+          <SectorsOnMap
+            selected={selectedSector}
+            onPick={tool === 'select' && editingSector === null ? setSelectedSector : undefined}
+            hidden={editingSector}
+          />
           {tool === 'measure' && <MeasureTool hintSlot={hintSlot} />}
         </MissionMap>
         {/* What floats over the map's top left corner. It moves right when a panel opens,
@@ -124,7 +133,11 @@ function App() {
           <div ref={setHintSlot} />
         </div>
         {tool === 'search-area' && <DrawSearchArea hintSlot={hintSlot} onDone={() => setTool('select')} />}
-        {selectedSector !== null && !drawing && <SectorCard id={selectedSector} onClose={() => setSelectedSector(null)} />}
+        {editingSector !== null ? (
+          <EditSectorShape id={editingSector} hintSlot={hintSlot} onClose={() => setEditingSector(null)} />
+        ) : selectedSector !== null && !drawing && (
+          <SectorCard id={selectedSector} onClose={() => setSelectedSector(null)} onEdit={setEditingSector} />
+        )}
         {/* key: picking the other shape starts the tool afresh. */}
         {tool === 'sector' && (
           <DrawSector key={sectorShape} shape={sectorShape} hintSlot={hintSlot} toolSlot={toolSlot} onDone={() => setTool('select')} />

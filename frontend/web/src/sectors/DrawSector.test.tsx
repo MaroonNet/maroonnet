@@ -13,7 +13,7 @@ import { SectorsContext } from './sectors.ts'
 // drawSector: change(...) is the shape moving under the pointer, finish(...) is a rectangle
 // drawn, and outside() is a rectangle let go wholly outside the search area. edit(...) is
 // the tool handing it a closed custom shape, whose corners can then be dragged.
-type Listeners = { change: (corners: Position[]) => void, finish: (corners: Position[]) => void, outside: () => void }
+type Listeners = { change: (corners: Position[]) => void, finish: (corners: Position[]) => void, outside: () => void, full: () => void }
 const drawing = vi.hoisted(() => ({
     on: null as unknown as Listeners,
     area: null as unknown,
@@ -73,7 +73,7 @@ function drawTool(add = vi.fn(async (_corners: Position[]) => ''), units: Units 
         return (
             <SettingsContext value={{ settings: { units }, loadFailed: false, change: async () => false }}>
                 <SearchAreaContext value={{ area: ARIZONA07_AREA, loadedFor: 'az07', save: async () => '' }}>
-                    <SectorsContext value={{ sectors: [], loadedFor: 'az07', add }}>
+                    <SectorsContext value={{ sectors: [], loadedFor: 'az07', add, changeShape: async () => '', remove: async () => '' }}>
                         <div ref={setToolSlot} />
                         <div ref={setHintSlot} />
                         <DrawSector shape={shape} hintSlot={hintSlot} toolSlot={toolSlot} onDone={onDone} />
@@ -91,6 +91,7 @@ const hint = () => screen.getByRole('status').textContent
 const card = () => screen.queryByRole('heading', { name: 'New Sector' })
 
 const RECTANGLE_HINT = 'Drag on the map to draw a rectangle. Right-click the tool for a custom shape.'
+const EDIT_HINT = "Drag a corner to move it, or a side's middle to add a corner. Then Save the sector."
 
 test('the hint line says to drag, there is no card yet, and the drawing is kept to the search area', () => {
     drawTool()
@@ -114,7 +115,14 @@ test('a drawn sector opens the New Sector card with its points and area', () => 
     expect(card()).toBeTruthy()
     expect(screen.getByText('Points').nextSibling?.textContent).toBe('9')
     expect(screen.getByText('Area').nextSibling?.textContent).toBe('0.55 km²')
-    expect(hint()).toBe('0.55 km²Drag a corner to move it, or Save the sector.')  // the figure stays, as with the search area
+    expect(hint()).toBe(`0.55 km²${EDIT_HINT}`)  // the figure stays, as with the search area
+})
+
+test("a corner added from a side's middle past the 24th is refused, and the hint line says so", () => {
+    drawTool()
+    act(() => drawing.on.finish(S7))
+    act(() => drawing.on.full())
+    expect(hint()).toBe('0.55 km²A sector has at most 24 corners.')
 })
 
 test('the card follows the Units setting', () => {
@@ -265,7 +273,7 @@ test('a closed shape gets draggable corners and the New Sector card; Undo and Re
     expect(drawing.edit).toHaveBeenCalledWith(S7)
     expect(card()).toBeTruthy()
     expect(screen.getByText('Points').nextSibling?.textContent).toBe('9')
-    expect(hint()).toBe('0.55 km²Drag a corner to move it, or Save the sector.')
+    expect(hint()).toBe(`0.55 km²${EDIT_HINT}`)
     expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull()
 })
 

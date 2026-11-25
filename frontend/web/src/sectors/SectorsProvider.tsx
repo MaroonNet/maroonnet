@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { sendError } from '../diagnostics/errorLog.ts'
 import type { Position } from '../map/geo.ts'
 import { useMission } from '../mission/mission.ts'
-import { addSector, loadSectors, SectorsContext, type Sector } from './sectors.ts'
+import { addSector, changeSectorShape, deleteSector, loadSectors, SectorsContext, type Sector } from './sectors.ts'
 
 // Sectors as they were read: the sectors, and what was open when they were read.
 type Read = { readFor: string, missionId: string, sectors: Sector[] }
@@ -26,14 +26,16 @@ function SectorsProvider({ children }: { children: ReactNode }) {
         return () => { overtaken = true }
     }, [missionId, readFor])
 
-    async function add(corners: Position[]): Promise<string> {
+    // Sends one change to the backend. Once it is saved, change(sectors) gives the board's
+    // new list from the one it had. The answer is empty when it worked, and the reason when
+    // it did not.
+    async function saveThen<Answer>(send: () => Promise<Answer>, change: (sectors: Sector[], answer: Answer) => Sector[]): Promise<string> {
         if (!missionId || !readFor) return 'No mission is open.'
         try {
-            const added = await addSector(corners)
-            // Kept in number order: a new sector can take the number of one just deleted.
+            const answer = await send()
             setRead((now) => {
                 const before = now?.missionId === missionId ? now.sectors : []
-                return { readFor, missionId, sectors: [...before, added].sort((a, b) => a.id - b.id) }
+                return { readFor, missionId, sectors: change(before, answer) }
             })
             return ''
         } catch (error) {
@@ -41,12 +43,20 @@ function SectorsProvider({ children }: { children: ReactNode }) {
         }
     }
 
+    // Kept in number order: a new sector can take the number of one just deleted.
+    const add = (corners: Position[]) => saveThen(() => addSector(corners),
+        (sectors, added) => [...sectors, added].sort((a, b) => a.id - b.id))
+    const changeShape = (id: number, corners: Position[]) => saveThen(() => changeSectorShape(id, corners),
+        (sectors, changed) => sectors.map((sector) => sector.id === id ? changed : sector))
+    const remove = (id: number) => saveThen(() => deleteSector(id),
+        (sectors) => sectors.filter((sector) => sector.id !== id))
+
     // What was read for an earlier mission is not this mission's sectors. Sectors read
     // before the session or status changed are still this mission's, and are shown until
     // the new reading arrives.
     const current = read?.missionId === missionId ? read : null
     return (
-        <SectorsContext value={{ sectors: current?.sectors ?? [], loadedFor: current?.missionId ?? null, add }}>
+        <SectorsContext value={{ sectors: current?.sectors ?? [], loadedFor: current?.missionId ?? null, add, changeShape, remove }}>
             {children}
         </SectorsContext>
     )

@@ -13,6 +13,7 @@ import { useSearchArea } from '../searchArea/searchArea.ts'
 import { useSettings } from '../settings/settings.ts'
 import { formatArea } from '../settings/units.ts'
 import { useSectors } from './sectors.ts'
+import { FULL } from './sectorWords.ts'
 
 type Props = {
     shape: SectorShape              // a rectangle, or a custom shape clicked out corner by corner
@@ -23,7 +24,7 @@ type Props = {
 
 const RECTANGLE_HINT = 'Drag on the map to draw a rectangle. Right-click the tool for a custom shape.'
 const OUTSIDE = 'A sector must be inside the search area. Drag inside the dashed line.'
-const EDIT_HINT = 'Drag a corner to move it, or Save the sector.'
+const EDIT_HINT = "Drag a corner to move it, or a side's middle to add a corner. Then Save the sector."
 const NOTHING_CLICKED: DraftFacts = { count: 0, canUndo: false, canRedo: false, refused: null }
 
 // The Draw Sector tool, drawn while it is the picked tool. The user drags a rectangle, or
@@ -38,6 +39,7 @@ function DrawSector({ shape, hintSlot, toolSlot, onDone }: Props) {
     const [corners, setCorners] = useState<Position[] | null>(null)  // the shape, while dragged and once drawn
     const [drawn, setDrawn] = useState(false)   // the shape is finished and on the card
     const [outside, setOutside] = useState(false)  // a rectangle was let go wholly outside the area
+    const [full, setFull] = useState(false)        // a corner added at a side's middle was refused
     const [clicked, setClicked] = useState<DraftFacts>(NOTHING_CLICKED)  // a custom shape so far
     const [busy, setBusy] = useState(false)     // the save is on its way
     const [failure, setFailure] = useState('')  // why the save did not work
@@ -53,7 +55,9 @@ function DrawSector({ shape, hintSlot, toolSlot, onDone }: Props) {
             change(next) {
                 setCorners(next)
                 setOutside(false)  // a new drag has started
+                setFull(false)
             },
+            full: () => setFull(true),
             finish(next) {
                 setCorners(next)
                 setDrawn(true)
@@ -119,7 +123,7 @@ function DrawSector({ shape, hintSlot, toolSlot, onDone }: Props) {
     }
 
     const size = corners && formatArea(polygonArea(corners), units)
-    const hint = drawn ? EDIT_HINT
+    const hint = drawn ? (full ? FULL : EDIT_HINT)
         : shape === 'custom' ? clickingHint(clicked)
         : outside ? OUTSIDE : RECTANGLE_HINT
     // While clicking a custom shape, the figure is the count of corners; otherwise its area.

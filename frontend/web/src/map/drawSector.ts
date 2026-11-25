@@ -1,8 +1,9 @@
 import type { Polygon } from 'geojson'
 import type { Map as MapLibreMap } from 'maplibre-gl'
-import { TerraDraw, TerraDrawPolygonMode, TerraDrawRectangleMode, TerraDrawSelectMode } from 'terra-draw'
+import { TerraDraw, TerraDrawPolygonMode, TerraDrawRectangleMode, TerraDrawSelectMode, type GeoJSONStoreFeatures } from 'terra-draw'
 import { TerraDrawMapLibreGLAdapter } from 'terra-draw-maplibre-gl-adapter'
 import { onOrInside, type Bounds, type Position } from './geo.ts'
+import { MOST_CORNERS } from './shapeDraft.ts'
 
 // The two ways to draw a sector: drag out a rectangle, or click its corners one at a time
 // (drawCustomShape.ts).
@@ -18,9 +19,10 @@ export type SectorDrawing = {
 }
 
 type Listeners = {
-    change: (corners: Position[]) => void  // the shape so far: while dragged out, and while a corner is dragged
-    finish: (corners: Position[]) => void  // a rectangle is drawn; its corners can now be dragged
-    outside: () => void                    // a rectangle was let go wholly outside the search area, so nothing was drawn
+    change: (corners: Position[]) => void  // the shape so far: while dragged out, and while a corner is dragged or added
+    finish?: (corners: Position[]) => void // a rectangle is drawn; its corners can now be dragged
+    outside?: () => void                   // a rectangle was let go wholly outside the search area, so nothing was drawn
+    full?: () => void                      // a corner added at a side's middle was refused: the shape has 24
 }
 
 const RED = '#c9302d'  // a drawn sector's red (SECTOR_COLORS in sectors/looks.ts)
@@ -41,15 +43,22 @@ export function drawSector(map: MapLibreMap, area: Bounds, shape: SectorShape, o
         const place = onOrInside({ lat, lon: lng }, area)
         return [place.lon, place.lat]
     }
-    // How a finished shape's corners may be dragged.
+    // How a finished shape's corners may be dragged. A dot at the middle of each side adds a
+    // corner there when dragged, up to the 24 a sector may have.
     const dragCorners = {
         feature: {
             selfIntersectable: false,  // a drag that would cross two sides is not taken
+            validation: (shape: GeoJSONStoreFeatures) => {
+                const corners = (shape.geometry as Polygon).coordinates[0].length - 1  // the ring repeats its first corner
+                if (corners <= MOST_CORNERS) return { valid: true }
+                on.full?.()
+                return { valid: false, reason: `A sector has at most ${MOST_CORNERS} corners.` }
+            },
             coordinates: {
                 draggable: true,
                 snappable: { toCustom: keepInside },
-                midpoints: false,   // no corners added by dragging a side's middle
-                deletable: false,   // and none taken away
+                midpoints: { draggable: true },
+                deletable: false,   // no corners taken away
             },
         },
     }
@@ -73,6 +82,8 @@ export function drawSector(map: MapLibreMap, area: Bounds, shape: SectorShape, o
                     selectedPolygonOutlineColor: RED, selectedPolygonOutlineWidth: 2,
                     selectionPointColor: '#ffffff', selectionPointOutlineColor: RED,
                     selectionPointWidth: 5, selectionPointOutlineWidth: 2,
+                    // The dot at a side's middle, smaller and solid, so it reads apart from a corner.
+                    midPointColor: RED, midPointOutlineColor: '#ffffff', midPointWidth: 3, midPointOutlineWidth: 1,
                 },
             }),
         ],
@@ -98,12 +109,12 @@ export function drawSector(map: MapLibreMap, area: Bounds, shape: SectorShape, o
         const inside = corners.map((corner) => onOrInside(corner, area))
         if (!hasArea(inside)) {
             draw.removeFeatures([id])
-            on.outside()
+            on.outside?.()
             return
         }
         draw.updateFeatureGeometry(id, ringOf(inside))
         holdForEditing(id)
-        on.finish(inside)
+        on.finish?.(inside)
     })
 
     // The shape's corners become handles to drag.

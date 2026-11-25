@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { useState } from 'react'
 import { afterEach, expect, test, vi } from 'vitest'
 import type { Bounds } from '../map/geo.ts'
+import { SectorsContext, type Sector } from '../sectors/sectors.ts'
 import { SettingsContext, type Units } from '../settings/settings.ts'
 import DrawSearchArea from './DrawSearchArea.tsx'
 import SearchAreaOutline from './SearchAreaOutline.tsx'
@@ -42,15 +43,17 @@ const ARIZONA07_AREA: SearchArea = { min_lat: 31.3926, min_lon: -110.8083, max_l
 
 // Draws the tool with the spot its hint line goes in. save is the search area board's save:
 // it answers with nothing when the area was saved, and with the reason when it was not.
-function drawTool(save = vi.fn(async (_area: SearchArea) => ''), units: Units = 'imperial') {
+function drawTool(save = vi.fn(async (_area: SearchArea) => ''), units: Units = 'imperial', sectors: Sector[] = []) {
     const onDone = vi.fn()
     function Screen() {
         const [hintSlot, setHintSlot] = useState<HTMLElement | null>(null)  // as App keeps it
         return (
             <SettingsContext value={{ settings: { units }, loadFailed: false, change: async () => false }}>
                 <SearchAreaContext value={{ area: null, loadedFor: 'bc', save }}>
-                    <div ref={setHintSlot} />
-                    <DrawSearchArea hintSlot={hintSlot} onDone={onDone} />
+                    <SectorsContext value={{ sectors, loadedFor: 'bc', add: async () => '', changeShape: async () => '', remove: async () => '' }}>
+                        <div ref={setHintSlot} />
+                        <DrawSearchArea hintSlot={hintSlot} onDone={onDone} />
+                    </SectorsContext>
                 </SearchAreaContext>
             </SettingsContext>
         )
@@ -87,6 +90,38 @@ test('the card follows the Units setting', () => {
     expect(screen.getByText('Width').nextSibling?.textContent).toBe('25.1 km')
     expect(screen.getByText('Height').nextSibling?.textContent).toBe('25.2 km')
     expect(screen.getByText('Area').nextSibling?.textContent).toBe('630.79 km²')
+})
+
+// A small square sector with its south-west corner here.
+function sectorAt(id: number, lat: number, lon: number): Sector {
+    return {
+        id, name: `S${id}`, status: 'drawn', group_id: null, can_edit: true, created_time: '2025-04-14T08:02:00Z', completed_time: null,
+        corners: [{ lat, lon }, { lat: lat + 0.01, lon }, { lat: lat + 0.01, lon: lon + 0.01 }, { lat, lon: lon + 0.01 }],
+    }
+}
+const INSIDE_ALL = sectorAt(1, 31.5, -110.7)
+const NEAR_EAST = sectorAt(2, 31.5, -110.56)  // inside Arizona07's area, close to its east line
+const NEAR_WEST = sectorAt(3, 31.5, -110.8)   // close to its west line
+
+test('the card counts the sectors the new area holds', () => {
+    drawTool(undefined, 'imperial', [INSIDE_ALL, NEAR_EAST])
+    act(() => drawing.finish(ARIZONA07_AREA))
+    expect(screen.getByText('Sectors').nextSibling?.textContent).toBe('2 inside')
+    expect(screen.getByRole('button', { name: 'Apply' }).hasAttribute('disabled')).toBe(false)
+})
+
+test('a new area that would leave sectors outside cannot be applied, and the card names them', () => {
+    const { save } = drawTool(undefined, 'imperial', [INSIDE_ALL, NEAR_EAST, NEAR_WEST])
+    const smaller = { ...ARIZONA07_AREA, min_lon: -110.75, max_lon: -110.6 }  // cuts off both ends
+
+    act(() => drawing.finish(smaller))
+
+    expect(screen.getByText('Sectors').nextSibling?.textContent).toBe('1 inside')
+    expect(screen.getByText('S2 and S3 would be outside this search area. Drag a rectangle that holds them.')).toBeTruthy()
+    const apply = screen.getByRole('button', { name: 'Apply' })
+    expect(apply.hasAttribute('disabled')).toBe(true)
+    fireEvent.click(apply)
+    expect(save).not.toHaveBeenCalled()
 })
 
 test('Apply saves the rectangle and the tool is done', async () => {

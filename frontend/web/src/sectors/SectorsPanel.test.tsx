@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { MissionContext, type OpenMission } from '../mission/mission.ts'
 import { SettingsContext } from '../settings/settings.ts'
@@ -28,11 +28,12 @@ const ARIZONA07_SECTORS = [
     sector(5, 'completed'), sector(6, 'partial'), sector(7, 'drawn', { can_edit: true, created_time: '2025-04-14T08:02:00Z' }),
 ]
 
-function Boards({ children, mission = ARIZONA07, sectors = ARIZONA07_SECTORS }: { children: React.ReactNode, mission?: OpenMission | null, sectors?: Sector[] }) {
+type BoardsProps = { children: React.ReactNode, mission?: OpenMission | null, sectors?: Sector[], remove?: (id: number) => Promise<string> }
+function Boards({ children, mission = ARIZONA07, sectors = ARIZONA07_SECTORS, remove = async () => '' }: BoardsProps) {
     return (
         <SettingsContext value={{ settings: { units: 'imperial' }, loadFailed: false, change: async () => false }}>
             <MissionContext value={{ mission, loadFailed: false, run: async () => '' }}>
-                <SectorsContext value={{ sectors, loadedFor: mission?.id ?? null, add: async () => '' }}>
+                <SectorsContext value={{ sectors, loadedFor: mission?.id ?? null, add: async () => '', changeShape: async () => '', remove }}>
                     {children}
                 </SectorsContext>
             </MissionContext>
@@ -78,7 +79,7 @@ test('with no mission open, or no sectors yet, the panel says so', () => {
 const fact = (label: string) => screen.getAllByText(label).find((element) => element.tagName === 'DT')?.nextSibling?.textContent
 
 test("a drawn sector's card: its name, status, what can be done, its area and when it was drawn", () => {
-    render(<Boards><SectorCard id={7} onClose={() => {}} /></Boards>)
+    render(<Boards><SectorCard id={7} onClose={() => {}} onEdit={() => {}} /></Boards>)
     expect(screen.getByRole('heading', { name: 'Sector S7' })).toBeTruthy()
     expect(screen.getAllByText('Drawn').map((element) => element.tagName)).toEqual(['P', 'DT'])  // the status, then the row
     expect(screen.getByText('Not sent yet. Shape can still be edited.')).toBeTruthy()
@@ -87,29 +88,81 @@ test("a drawn sector's card: its name, status, what can be done, its area and wh
 })
 
 test("a completed sector's card says it is history and when it was completed", () => {
-    render(<Boards><SectorCard id={1} onClose={() => {}} /></Boards>)
+    render(<Boards><SectorCard id={1} onClose={() => {}} onEdit={() => {}} /></Boards>)
     expect(screen.getByText('History. Kept for the after-action review.')).toBeTruthy()
     expect(fact('Completed')).toBe('1:21 am')
 })
 
 test("a partial sector's card says it can be searched again", () => {
-    render(<Boards><SectorCard id={4} onClose={() => {}} /></Boards>)
+    render(<Boards><SectorCard id={4} onClose={() => {}} onEdit={() => {}} /></Boards>)
     expect(screen.getByText('Searched in part. It can be assigned again.')).toBeTruthy()
 })
 
 test("a drawn sector that was assigned before says its shape is locked", () => {
-    render(<Boards sectors={[sector(8, 'drawn', { can_edit: false })]}><SectorCard id={8} onClose={() => {}} /></Boards>)
+    render(<Boards sectors={[sector(8, 'drawn', { can_edit: false })]}><SectorCard id={8} onClose={() => {}} onEdit={() => {}} /></Boards>)
     expect(screen.getByText('Sent before. Shape is locked.')).toBeTruthy()
 })
 
 test('the card closes with its close button', () => {
     const onClose = vi.fn()
-    render(<Boards><SectorCard id={7} onClose={onClose} /></Boards>)
+    render(<Boards><SectorCard id={7} onClose={onClose} onEdit={() => {}} /></Boards>)
     fireEvent.click(screen.getByRole('button', { name: 'Close card' }))
     expect(onClose).toHaveBeenCalledOnce()
 })
 
+test('a never-assigned sector has Edit Shape and Delete; a sector that has been used has neither', () => {
+    const { unmount } = render(<Boards><SectorCard id={7} onClose={() => {}} onEdit={() => {}} /></Boards>)
+    expect(screen.getByRole('button', { name: 'Edit Shape' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeTruthy()
+    unmount()
+
+    render(<Boards><SectorCard id={4} onClose={() => {}} onEdit={() => {}} /></Boards>)
+    expect(screen.queryByRole('button', { name: 'Edit Shape' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull()
+})
+
+test('Edit Shape starts editing that sector', () => {
+    const onEdit = vi.fn()
+    render(<Boards><SectorCard id={7} onClose={() => {}} onEdit={onEdit} /></Boards>)
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Shape' }))
+    expect(onEdit).toHaveBeenCalledWith(7)
+})
+
+test('Delete asks first; Keep deletes nothing', () => {
+    const remove = vi.fn(async () => '')
+    render(<Boards remove={remove}><SectorCard id={7} onClose={() => {}} onEdit={() => {}} /></Boards>)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    expect(screen.getByRole('dialog', { name: 'Delete S7?' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Keep' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(remove).not.toHaveBeenCalled()
+})
+
+test('Delete in the box deletes the sector, and the card closes', async () => {
+    const remove = vi.fn(async () => ''), onClose = vi.fn()
+    render(<Boards remove={remove}><SectorCard id={7} onClose={onClose} onEdit={() => {}} /></Boards>)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }))
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
+    expect(remove).toHaveBeenCalledWith(7)
+})
+
+test('a refused delete keeps the card, which says why', async () => {
+    const remove = vi.fn(async () => 'This session is ended, so nothing in it can be changed.')
+    render(<Boards remove={remove}><SectorCard id={7} onClose={() => {}} onEdit={() => {}} /></Boards>)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }))
+
+    expect((await screen.findByRole('alert')).textContent).toBe('This session is ended, so nothing in it can be changed.')
+    expect(screen.getByRole('heading', { name: 'Sector S7' })).toBeTruthy()
+})
+
 test('a sector that is no longer on the board shows no card', () => {
-    render(<Boards sectors={[]}><SectorCard id={7} onClose={() => {}} /></Boards>)
+    render(<Boards sectors={[]}><SectorCard id={7} onClose={() => {}} onEdit={() => {}} /></Boards>)
     expect(screen.queryByRole('heading')).toBeNull()
 })
