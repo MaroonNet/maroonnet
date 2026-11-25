@@ -10,6 +10,7 @@ import StackCard from './map/StackCard.tsx'
 import type { Stack } from './map/stacks.ts'
 import { style } from './map/mapStyle.ts'
 import type { StyleMetadata } from './map/styleChoices.ts'
+import CommunicationLog from './messages/CommunicationLog.tsx'
 import MissionPanel from './mission/MissionPanel.tsx'
 import StillRunningBox from './mission/StillRunningBox.tsx'
 import MeasureTool from './measure/MeasureTool.tsx'
@@ -218,6 +219,7 @@ function App() {
         {tool === 'sector' && (
           <DrawSector key={sectorShape} shape={sectorShape} hintSlot={hintSlot} toolSlot={toolSlot} onDone={() => setTool('select')} />
         )}
+        <CommunicationLog besidePanel={openPanel !== null} />
         <MapControls />
       </main>
       <StillRunningBox />
