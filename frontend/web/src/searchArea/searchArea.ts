@@ -1,16 +1,12 @@
 import { useEffect, useRef } from 'react'
 import { sendError } from '../diagnostics/errorLog.ts'
+import type { Bounds } from '../map/geo.ts'
 import { useMissionMap } from '../map/missionMap.ts'
 import { ask, useMission } from '../mission/mission.ts'
 
 // The open mission's search area, as the backend answers it (backend/search_area/routes.py):
 // the rectangle's south-west and north-east corners, in degrees.
-export type SearchArea = {
-    min_lat: number
-    min_lon: number
-    max_lat: number
-    max_lon: number
-}
+export type SearchArea = Bounds
 
 // None: the mission has no search area yet.
 export const loadSearchArea = () => ask<SearchArea | null>('/api/mission/search-area')
