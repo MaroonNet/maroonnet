@@ -6,6 +6,7 @@ import {
     startMission, startNextSession, STATUS_LABELS, useMission, type OpenMission,
 } from './mission.ts'
 import { FIELD } from './MissionList.tsx'
+import MissionSummary from './MissionSummary.tsx'
 import { formatDateTime, formatElapsed, TIME_ZONES, zoneLabel } from './missionTime.ts'
 
 // The questions this view asks before it does something.
@@ -56,6 +57,7 @@ function OpenMissionView({ mission }: { mission: OpenMission }) {
                     <Fact label="Elapsed"><span className="font-mono text-figure"><Elapsed since={mission.start_time} /></span></Fact>
                 )}
             </dl>
+            <MissionSummary />
 
             <div className="flex flex-col gap-2 px-4 pt-4">
                 {status === 'planning' && (

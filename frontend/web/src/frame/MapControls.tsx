@@ -1,12 +1,12 @@
-import { IconList, IconMinus, IconPlus, type Icon } from '@tabler/icons-react'
+import { IconMinus, IconPlus, type Icon } from '@tabler/icons-react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { useEffect, useState } from 'react'
 import { useMissionMap } from '../map/missionMap.ts'
 import { useSettings, type Units } from '../settings/settings.ts'
+import Legend, { BOX } from './Legend.tsx'
 import { metersPerPixel, scaleBar } from './scaleBar.ts'
 
 const SCALE_MAX = 170  // the widest the scale bar is drawn, in pixels
-const BOX = 'pointer-events-auto border border-ink bg-panel shadow-[0_2px_10px_rgb(32_30_24/0.22)]'  // a floating box
 
 // The controls at the bottom right of the map. They show once the map exists.
 function MapControls() {
@@ -84,43 +84,6 @@ function ScaleBar({ groundPerPixel, units }: { groundPerPixel: number, units: Un
         >
             {label}
         </div>
-    )
-}
-
-// The legend: a button that opens into a box in its place, and folds back to the button.
-// It has no entries until the things it explains are drawn on the map.
-function Legend() {
-    const [open, setOpen] = useState(false)
-
-    if (!open) {
-        return (
-            <button
-                type="button"
-                aria-label="Show legend"
-                title="Show legend"
-                onClick={() => setOpen(true)}
-                className={`flex size-11 cursor-pointer items-center justify-center rounded-control hover:bg-strip ${BOX}`}
-            >
-                <IconList size={20} stroke={1.75} aria-hidden />
-            </button>
-        )
-    }
-    return (
-        <section className={`w-60 overflow-hidden rounded-box ${BOX}`}>
-            <div className="flex h-7.5 items-center border-b border-ink bg-strip pr-1 pl-2.5">
-                <h2 className="flex-1 font-mono text-label tracking-widest uppercase">Legend</h2>
-                <button
-                    type="button"
-                    aria-label="Collapse legend"
-                    title="Collapse legend"
-                    onClick={() => setOpen(false)}
-                    className="flex size-6 cursor-pointer items-center justify-center rounded-control hover:bg-panel"
-                >
-                    <IconList size={14} stroke={1.75} aria-hidden />
-                </button>
-            </div>
-            <p className="px-2.5 py-2 font-medium text-muted">Nothing to show yet.</p>
-        </section>
     )
 }
 
