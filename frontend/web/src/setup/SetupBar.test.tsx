@@ -68,6 +68,30 @@ test('the steps are a checklist: none of them can be pressed', () => {
     expect(screen.queryByRole('button')).toBeNull()
 })
 
+// What a red Offline Maps step says under the bar
+
+test('a red Offline Maps step says what is missing under the bar, with a greyed Download button', async () => {
+    show({ area: ARIZONA07_AREA })  // the state pack only
+
+    expect((await screen.findByRole('status')).textContent).toContain('No mission pack covers the search area.')
+    const download = screen.getByRole('button', { name: 'Download' })
+    expect(download.getAttribute('aria-disabled')).toBe('true')
+    expect(download.title).toBe('Not available yet')
+})
+
+test('with the search area covered there is no line and no Download button', async () => {
+    show({ area: ARIZONA07_AREA, packs: [...ARIZONA, ARIZONA07_PACK] })
+    await waitFor(() => expect(steps()[1]).toBe('Offline Maps: done'))
+
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.queryByRole('button')).toBeNull()
+})
+
+test('with no search area yet there is no line: there is nothing to check', () => {
+    show()
+    expect(screen.queryByRole('status')).toBeNull()
+})
+
 test('the bar is gone once the mission has started', () => {
     show({ status: 'active' })
     expect(screen.queryByRole('list', { name: 'Setup' })).toBeNull()
