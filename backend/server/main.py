@@ -8,6 +8,7 @@ from maps.folders import create_maps_folder
 from maps.installed import installed, scan
 from maps.routes import router as maps_router
 from mapdb.routes import router as spm_router
+from messages.routes import router as messages_router
 from mission.open_mission import mission_session, reopen_last_mission
 from mission.routes import router as mission_router
 from missiondb import get_session
@@ -44,6 +45,7 @@ app.include_router(roster_router)
 app.include_router(people_router)
 app.include_router(teams_router)
 app.include_router(waypoints_router)
+app.include_router(messages_router)
 
 # A route that asks missiondb for a database session (get_session) is handed one on the open
 # mission in its place. The probability map routes ask this way, and so need no change.
