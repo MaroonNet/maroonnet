@@ -43,7 +43,7 @@ export function dayAndSession(mission: Mission): string {
 
 // Sends one request to the backend and answers with what it sent back. A refusal is thrown
 // as an Error whose message is the backend's own line, such as "No mission is open."
-async function ask<Answer>(address: string, method = 'GET', body?: unknown): Promise<Answer> {
+export async function ask<Answer>(address: string, method = 'GET', body?: unknown): Promise<Answer> {
     const response = await fetch(address, {
         method,
         headers: body === undefined ? undefined : { 'content-type': 'application/json' },

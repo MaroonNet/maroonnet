@@ -10,6 +10,7 @@ import { style } from './map/mapStyle.ts'
 import type { StyleMetadata } from './map/styleChoices.ts'
 import MissionPanel from './mission/MissionPanel.tsx'
 import StillRunningBox from './mission/StillRunningBox.tsx'
+import { useMapOverSearchArea } from './searchArea/searchArea.ts'
 import SettingsPanel from './settings/SettingsPanel.tsx'
 
 // The whole screen: the rail down the left edge, the panel its buttons open, and the map
@@ -23,6 +24,8 @@ function App() {
   // so the choices are kept while the panel is closed.
   const [hidden, setHidden] = useState<string[]>([])  // the layer groups the user has hidden
   const [pickedUses, setPickedUses] = useState<string[]>([])  // the trail uses ticked; none: all trails
+
+  useMapOverSearchArea(map, openPanel !== null)
 
   // Pressing the open panel's button closes it; pressing another opens that one in its place.
   function pressRailButton(id: PanelId) {
