@@ -28,6 +28,28 @@ test('V with Ctrl or Cmd held picks nothing, so pasting still works', () => {
     expect(onPick).not.toHaveBeenCalled()
 })
 
+test('pressing A, or the tool itself, picks the Draw Search Area tool', () => {
+    const onPick = vi.fn()
+    render(<Toolbar tool="select" onPick={onPick} />)
+    fireEvent.keyDown(document.body, { key: 'a' })
+    fireEvent.click(screen.getByRole('button', { name: 'Draw Search Area' }))
+    expect(onPick.mock.calls).toEqual([['search-area'], ['search-area']])
+})
+
+test('a greyed tool is not picked by a press or by its key, and its tooltip says why', () => {
+    const onPick = vi.fn()
+    render(<Toolbar tool="select" onPick={onPick} greyed={{ 'search-area': 'Open a mission first' }} />)
+    const tool = screen.getByRole('button', { name: 'Draw Search Area' })
+    expect(tool.getAttribute('aria-disabled')).toBe('true')
+
+    fireEvent.click(tool)
+    fireEvent.keyDown(document.body, { key: 'a' })
+    expect(onPick).not.toHaveBeenCalled()
+
+    fireEvent.mouseEnter(tool)
+    expect(screen.getByRole('tooltip').textContent).toBe('Draw Search AreaOpen a mission first')
+})
+
 test('the card shows its title and its contents', () => {
     render(<Card title="New Sector"><p>4 points</p></Card>)
     expect(screen.getByRole('heading', { name: 'New Sector' })).toBeTruthy()

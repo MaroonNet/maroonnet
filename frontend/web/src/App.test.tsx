@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 import App from './App.tsx'
+import { MissionContext, type OpenMission } from './mission/mission.ts'
 import SettingsProvider from './settings/SettingsProvider.tsx'
 
 // A pretend MapLibre map. It records zoom presses, and a test can move it to another zoom.
@@ -34,6 +35,9 @@ vi.mock('./map/MissionMap.tsx', () => {
 
 // The pieces outside the map read it from the shared board. Here the board holds the pretend map.
 vi.mock('./map/missionMap.ts', () => ({ useMissionMap: () => fakeMap }))
+
+// Drawing needs a real map too, so a tool that draws is handed a drawing that does nothing.
+vi.mock('./map/drawRectangle.ts', () => ({ drawRectangle: () => ({ clear() {}, stop() {} }) }))
 
 // The style comes from the backend too. This one lists two layer groups and two trail uses.
 vi.mock('./map/mapStyle.ts', () => ({
@@ -145,6 +149,28 @@ test('the choices are kept while the panel is closed', () => {
 test('the toolbar shows the Select tool, picked', () => {
     render(<App />)
     expect(screen.getByRole('button', { name: 'Select' }).getAttribute('aria-pressed')).toBe('true')
+})
+
+test('the Draw Search Area tool is greyed until a mission is open', () => {
+    render(<App />)  // no mission board above it, so no mission is open
+    const tool = screen.getByRole('button', { name: 'Draw Search Area' })
+    expect(tool.getAttribute('aria-disabled')).toBe('true')
+    fireEvent.click(tool)
+    expect(screen.getByRole('button', { name: 'Select' }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.queryByRole('status')).toBeNull()  // no hint line: the tool did not start
+})
+
+test('with a mission open, picking Draw Search Area starts the tool, and its hint line shows under the toolbar', () => {
+    const mission: OpenMission = {
+        id: 'bc', name: 'Bear Creek', time_zone: 'America/Denver', status: 'planning', session: 1,
+        start_time: null, end_time: null, sessions: [], asks_to_continue: false,
+    }
+    render(<MissionContext value={{ mission, loadFailed: false, run: async () => '' }}><App /></MissionContext>)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Draw Search Area' }))
+
+    expect(screen.getByRole('button', { name: 'Draw Search Area' }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByRole('status').textContent).toBe('Drag on the map to draw the search area.')
 })
 
 test('hovering the Select tool shows its name and key, and leaving hides them', () => {

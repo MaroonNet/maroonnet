@@ -9,8 +9,14 @@ import { style } from './map/mapStyle.ts'
 import type { StyleMetadata } from './map/styleChoices.ts'
 import MissionPanel from './mission/MissionPanel.tsx'
 import StillRunningBox from './mission/StillRunningBox.tsx'
+import { useMission } from './mission/mission.ts'
+import DrawSearchArea from './searchArea/DrawSearchArea.tsx'
+import SearchAreaOutline from './searchArea/SearchAreaOutline.tsx'
 import { useMapOverSearchArea } from './searchArea/searchArea.ts'
 import SettingsPanel from './settings/SettingsPanel.tsx'
+
+// The tools that are greyed while no mission is open.
+const NEEDS_MISSION = { 'search-area': 'Open a mission first' }
 
 // The whole screen: the rail down the left edge, the panel its buttons open, and the map
 // filling the rest, with the toolbar over its top left corner.
@@ -21,8 +27,16 @@ function App() {
   // so the choices are kept while the panel is closed.
   const [hidden, setHidden] = useState<string[]>([])  // the layer groups the user has hidden
   const [pickedUses, setPickedUses] = useState<string[]>([])  // the trail uses ticked; none: all trails
+  // The spot under the toolbar where the tool in use draws its hint line. It is kept as
+  // state so the tool is drawn again once the spot exists.
+  const [hintSlot, setHintSlot] = useState<HTMLElement | null>(null)
+  const { mission } = useMission()
 
   useMapOverSearchArea(openPanel !== null)
+
+  // A search area belongs to a mission, so its tool needs one open. If the mission is closed
+  // while the tool is picked, the toolbar goes back to Select.
+  if (!mission && tool === 'search-area') setTool('select')
 
   // Pressing the open panel's button closes it; pressing another opens that one in its place.
   function pressRailButton(id: PanelId) {
@@ -61,12 +75,16 @@ function App() {
         </Panel>
       )}
       <main className="relative z-0 min-w-0 flex-1">
-        <MissionMap hidden={hidden} pickedUses={pickedUses} />
+        <MissionMap hidden={hidden} pickedUses={pickedUses}>
+          <SearchAreaOutline />
+        </MissionMap>
         {/* What floats over the map's top left corner. It moves right when a panel opens,
             so the panel does not cover it. */}
         <div className={`absolute top-3.5 left-3.5 z-10 flex flex-col items-start gap-2 ${openPanel ? 'translate-x-panel' : ''}`}>
-          <Toolbar tool={tool} onPick={setTool} />
+          <Toolbar tool={tool} onPick={setTool} greyed={mission ? undefined : NEEDS_MISSION} />
+          <div ref={setHintSlot} />
         </div>
+        {tool === 'search-area' && <DrawSearchArea hintSlot={hintSlot} onDone={() => setTool('select')} />}
         <MapControls />
       </main>
       <StillRunningBox />
