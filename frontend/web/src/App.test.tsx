@@ -100,6 +100,13 @@ test('the × button closes the panel', () => {
     expect(screen.queryByRole('heading', { name: 'Map Layers' })).toBeNull()
 })
 
+test('pressing Area opens the Search Area panel', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Area' }))
+    expect(screen.getByRole('heading', { name: 'Search Area' })).toBeTruthy()
+    expect(screen.getByText('No mission is open.')).toBeTruthy()
+})
+
 test('a greyed button opens nothing and says "Not available yet"', () => {
     render(<App />)
     const people = screen.getByRole('button', { name: 'People' })

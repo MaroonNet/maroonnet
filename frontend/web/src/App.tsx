@@ -10,6 +10,7 @@ import type { StyleMetadata } from './map/styleChoices.ts'
 import MissionPanel from './mission/MissionPanel.tsx'
 import StillRunningBox from './mission/StillRunningBox.tsx'
 import { useMission } from './mission/mission.ts'
+import AreaPanel from './searchArea/AreaPanel.tsx'
 import DrawSearchArea from './searchArea/DrawSearchArea.tsx'
 import SearchAreaOutline from './searchArea/SearchAreaOutline.tsx'
 import { useMapOverSearchArea } from './searchArea/searchArea.ts'
@@ -51,6 +52,11 @@ function App() {
       {openPanel === 'mission' && (
         <Panel title="Mission" onClose={() => setOpenPanel(null)}>
           <MissionPanel />
+        </Panel>
+      )}
+      {openPanel === 'area' && (
+        <Panel title="Search Area" onClose={() => setOpenPanel(null)}>
+          <AreaPanel />
         </Panel>
       )}
       {openPanel === 'layers' && (

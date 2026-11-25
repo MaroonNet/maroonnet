@@ -12,7 +12,7 @@ const BUTTONS: { id: PanelId, label: string, icon: Icon, built: boolean }[] = [
     { id: 'teams', label: 'Groups & Teams', icon: IconUsersGroup, built: false },
     { id: 'people', label: 'People', icon: IconUser, built: false },
     { id: 'sectors', label: 'Sectors', icon: IconPolygon, built: false },
-    { id: 'area', label: 'Area', icon: IconMarquee2, built: false },
+    { id: 'area', label: 'Area', icon: IconMarquee2, built: true },
     { id: 'alerts', label: 'Alerts', icon: IconAlertTriangle, built: false },
     { id: 'mesh', label: 'Mesh', icon: IconAccessPoint, built: false },
     { id: 'layers', label: 'Layers', icon: IconStack2, built: true },
