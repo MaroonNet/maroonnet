@@ -32,10 +32,11 @@ test('with two waypoints on one spot the card asks which, and a row picks that o
     expect(on.waypoint).toHaveBeenCalledWith(5)
 })
 
-test('with teams on one spot the card lists each with its group, and a row picks that team', () => {
+test("with teams on one spot the card lists each with its group's dot and its group, and a row picks that team", () => {
     const on = show({ teams: [1, 2, 7], waypoints: [] })
     expect(screen.getByRole('heading', { name: '3 teams here' })).toBeTruthy()
-    expect(rows().map((row) => row.textContent)).toEqual(['R1Radio 1Group 1', 'R2Radio 2Group 1', 'R7Radio 7Group 2'])
+    expect(rows().map((row) => row.textContent)).toEqual(['Radio 1Group 1', 'Radio 2Group 1', 'Radio 7Group 2'])
+    expect(rows()[2].firstElementChild!.className).toContain('size-3.5')
     fireEvent.click(rows()[2])
     expect(on.team).toHaveBeenCalledWith(7)
 })
@@ -43,7 +44,7 @@ test('with teams on one spot the card lists each with its group, and a row picks
 test('teams and waypoints on one spot are listed together, teams first', () => {
     const on = show({ teams: [1, 7], waypoints: [1] })
     expect(screen.getByRole('heading', { name: '2 teams · 1 waypoint here' })).toBeTruthy()
-    expect(rows().map((row) => row.textContent)).toEqual(['R1Radio 1Group 1', 'R7Radio 7Group 2', 'Command postCommand post'])
+    expect(rows().map((row) => row.textContent)).toEqual(['Radio 1Group 1', 'Radio 7Group 2', 'Command postCommand post'])
     fireEvent.click(rows()[2])
     expect(on.waypoint).toHaveBeenCalledWith(1)
     expect(on.team).not.toHaveBeenCalled()

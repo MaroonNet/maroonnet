@@ -1,7 +1,7 @@
 import type { Map as MapLibreMap } from 'maplibre-gl'
 
-// Two markers this close on screen, in pixels, cover each other: a team's circle is 30
-// across, a waypoint's pin 24.
+// Two markers this close on screen, in pixels, cover each other: a waypoint's pin is 24
+// across, a team's dot 14 with its pill beside it.
 export const SAME_SPOT = 20
 
 // What one click on the map's markers picked: the teams (by radio) and the waypoints on

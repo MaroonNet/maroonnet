@@ -29,7 +29,7 @@ function StackCard({ stack, onPickTeam, onPickWaypoint, onClose }: Props) {
             <div className="flex flex-col gap-1.5">
                 {teams.map((team) => (
                     <button key={`team-${team.id}`} type="button" onClick={() => onPickTeam(team.id)} className={ROW}>
-                        <TeamMarker radio={team} small />
+                        <TeamMarker radio={team} />
                         <span className="flex-1">{radioLabel(team.id)}</span>
                         <span className="font-medium text-muted">{groupLabel(team.group_id)}</span>
                     </button>

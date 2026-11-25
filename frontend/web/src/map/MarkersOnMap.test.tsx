@@ -113,7 +113,7 @@ test('each waypoint is a marker at its place, with its name beside its kind\'s i
     expect(markers[3].querySelector('.tabler-icon-zoom-exclamation')).toBeTruthy()
 })
 
-test("a waypoint is a pin with its point on its place; a team's circle is centered on its place", () => {
+test("a waypoint is a pin with its point on its place; a team's dot is centered on its place", () => {
     const markers = draw({ waypoints: ARIZONA07.slice(3, 4), radios: [team(1, 1)] })
     expect(markers.map((marker) => marker.dataset.anchor)).toEqual(['bottom', 'center'])
     expect(markers[0].querySelector('[data-outline]')).toBeTruthy()
@@ -168,18 +168,19 @@ test('a waypoint being edited is not drawn; its pin is', () => {
 
 // Teams
 
-test("each team is a circle at its newest position, in its group's color and grey for none, with its short name inside", () => {
+test("each team is a dot at its newest position, in its group's color and grey for none, with a pill beside it naming its group and radio", () => {
     const markers = draw({ radios: [team(1, 1), team(4, null)] })
-    expect(markers.map((marker) => marker.textContent)).toEqual(['R1', 'R4'])
+    expect(labels()).toEqual(['G1R1', 'R4'])
     expect(markers[0].dataset.place).toBe('31.41,-110.6')
-    expect((within(markers[0]).getByText('R1')).style.background).toBe(written(groupColor(1)))
-    expect((within(markers[1]).getByText('R4')).style.background).toBe(written(NO_GROUP_COLOR))
+    expect(within(markers[0]).getByText('G1').style.background).toBe(written(groupColor(1)))
+    const colors = [...markers[1].querySelectorAll<HTMLElement>('[style]')].map((element) => element.style.background)
+    expect(colors).toContain(written(NO_GROUP_COLOR))
     expect(within(markers[1]).getByTitle('Radio 4 · No group')).toBeTruthy()
 })
 
 test('only a team that has reported has a marker: not the command post radio, a relay, a radio with nobody, or a team with no position', () => {
     const markers = draw({ radios: RADIOS })  // radios 1, 2 and 7 are teams with a position
-    expect(markers.map((marker) => within(marker).getByText(/^R\d$/).textContent)).toEqual(['R1', 'R2', 'R7'])
+    expect(markers.map((marker) => marker.querySelector('[title]')!.getAttribute('title'))).toEqual(['Radio 1 · Group 1', 'Radio 2 · Group 1', 'Radio 7 · Group 2'])
 })
 
 test('a click on a lone team picks it, and the click does not reach the map under it', () => {
@@ -190,10 +191,11 @@ test('a click on a lone team picks it, and the click does not reach the map unde
     expect(stopped.count).toBe(1)
 })
 
-test('teams on the same spot share one label that counts them, and a click picks them all', () => {
+test('teams on the same spot share one label that counts them, in place of their pills, and a click picks them all', () => {
     const onPick = vi.fn()
     const markers = draw({ radios: RADIOS, onPick })  // all three at the same place
     expect(labels()).toEqual(['', '', '3 teams'])
+    expect(screen.queryByText('G2')).toBeNull()
     fireEvent.click(markers[2])
     expect(onPick).toHaveBeenCalledWith({ teams: [1, 2, 7], waypoints: [] })
 })

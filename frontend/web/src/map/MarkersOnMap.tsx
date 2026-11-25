@@ -3,7 +3,7 @@ import { Marker } from 'react-map-gl/maplibre'
 import { SHOWN, type LayerChoice } from '../layers/missionLayers.ts'
 import { usePeople } from '../people/people.ts'
 import { groupLabel, radioLabel } from '../people/peopleWords.ts'
-import TeamMarker from '../teams/TeamMarker.tsx'
+import TeamMarker, { TeamPill } from '../teams/TeamMarker.tsx'
 import { teamsOnMap } from '../teams/teamWords.ts'
 import type { Radio } from '../teams/teams.ts'
 import KindMarker from '../waypoints/KindMarker.tsx'
@@ -26,9 +26,10 @@ type Props = {
 type Placed = { lat: number, lon: number, waypoint?: Waypoint, team?: Radio }
 
 // The markers on the map. A waypoint is its kind's pin, its point on its place, with its
-// name to the right of its head. A team is a circle in its group's color, centered on its
-// radio's newest position, with its short name inside. Markers on the same spot of the screen, of either
-// sort, are one stack: one label counts them, and a click picks them all, so a card can ask
+// name to the right of its head. A team is a dot in its group's color, centered on its
+// radio's newest position, with its pill to the right ("G2 R3"). Markers on the same spot
+// of the screen, of either sort, are one stack: one label counts them, in place of a name
+// or a pill, and a click picks them all, so a card can ask
 // which is meant. It is drawn inside the map (a child of MissionMap). The markers are page
 // elements laid over the map, so they sit above the sectors and the tracks. A sort unticked
 // in the Layers panel has no markers, so a stack counts and picks only what shows.
@@ -63,9 +64,10 @@ function MarkersOnMap({ selectedTeam, selectedWaypoint, onPick, hidden = null, t
         return stack.map((one, place) => {
             const { waypoint, team } = one
             // The last of a stack is drawn on top, and carries the stack's label. A lone
-            // waypoint's label is its name; a lone team's name is inside its circle.
+            // waypoint's label is its name; a lone team's is its pill.
             const top = place === stack.length - 1
             const label = !top ? '' : stack.length > 1 ? stackWords(picked.teams.length, picked.waypoints.length) : waypoint?.name ?? ''
+            const pill = top && stack.length === 1 && team
             const ringed = waypoint ? waypoint.id === selectedWaypoint : team!.id === selectedTeam
             return (
                 <Marker
@@ -81,9 +83,9 @@ function MarkersOnMap({ selectedTeam, selectedWaypoint, onPick, hidden = null, t
                         onPick(picked)
                     }}
                 >
-                    {/* The marker is as big as its pin or circle, so a pin's point or a circle's
-                        middle is on the place. The label hangs off its right side, level with
-                        the middle of a pin's head (12 px down) or a circle's middle. */}
+                    {/* The marker is as big as its pin or dot, so a pin's point or a dot's
+                        middle is on the place. The label or pill hangs off its right side, level
+                        with the middle of a pin's head (12 px down) or of a dot. */}
                     <div
                         title={waypoint ? `${waypoint.name} · ${kindOf(waypoint.kind).label}` : `${radioLabel(team!.id)} · ${groupLabel(team!.group_id)}`}
                         aria-current={ringed ? 'true' : undefined}
@@ -91,6 +93,11 @@ function MarkersOnMap({ selectedTeam, selectedWaypoint, onPick, hidden = null, t
                         className="relative flex"
                     >
                         {waypoint ? <KindMarker kind={waypoint.kind} pin ringed={ringed} /> : <TeamMarker radio={team!} ringed={ringed} />}
+                        {pill && (
+                            <span data-label className="absolute top-1/2 left-full ml-1 -translate-y-1/2">
+                                <TeamPill radio={pill} />
+                            </span>
+                        )}
                         {label && (
                             <span data-label className={`absolute ${waypoint ? 'top-3' : 'top-1/2'} left-full ml-1.5 -translate-y-1/2 font-sans text-body font-bold whitespace-nowrap text-ink [text-shadow:0_0_2px_#fff,0_0_2px_#fff,0_0_3px_#fff,0_0_3px_#fff]`}>
                                 {label}
