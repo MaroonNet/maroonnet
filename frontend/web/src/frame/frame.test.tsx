@@ -44,6 +44,64 @@ test('pressing M, or the tool itself, picks the Measure tool', () => {
     expect(onPick.mock.calls).toEqual([['measure'], ['measure']])
 })
 
+test('pressing D, or the tool itself, picks the Draw Sector tool', () => {
+    const onPick = vi.fn()
+    render(<Toolbar tool="select" onPick={onPick} />)
+    fireEvent.keyDown(document.body, { key: 'd' })
+    fireEvent.click(screen.getByRole('button', { name: 'Draw Sector' }))
+    expect(onPick.mock.calls).toEqual([['sector'], ['sector']])
+})
+
+test('the tools run Select, Draw Sector, Draw Search Area, Measure', () => {
+    render(<Toolbar tool="select" onPick={() => {}} />)
+    expect(screen.getAllByRole('button').map((button) => button.getAttribute('aria-label')))
+        .toEqual(['Select', 'Draw Sector', 'Draw Search Area', 'Measure'])
+})
+
+test("the Draw Sector tool's tooltip says a right-click offers the shapes", () => {
+    render(<Toolbar tool="select" onPick={() => {}} />)
+    fireEvent.mouseEnter(screen.getByRole('button', { name: 'Draw Sector' }))
+    expect(screen.getByRole('tooltip').textContent).toBe('Draw SectorD · right-click for shapes')
+})
+
+test('a right-click on Draw Sector opens the shape menu, with the picked shape ticked', () => {
+    render(<Toolbar tool="select" onPick={() => {}} sectorShape="rectangle" onPickShape={() => {}} />)
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Draw Sector' }))
+    const items = screen.getAllByRole('menuitemradio')
+    expect(items.map((item) => [item.textContent, item.getAttribute('aria-checked')]))
+        .toEqual([['Rectangle', 'true'], ['Custom shape', 'false']])
+})
+
+test('picking Custom shape from the menu picks that shape and the tool, and closes the menu', () => {
+    const onPick = vi.fn(), onPickShape = vi.fn()
+    render(<Toolbar tool="select" onPick={onPick} sectorShape="rectangle" onPickShape={onPickShape} />)
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Draw Sector' }))
+
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Custom shape' }))
+
+    expect(onPickShape).toHaveBeenCalledWith('custom')
+    expect(onPick).toHaveBeenCalledWith('sector')
+    expect(screen.queryByRole('menu')).toBeNull()
+})
+
+test('Escape, or a press anywhere else, closes the shape menu', () => {
+    render(<Toolbar tool="select" onPick={() => {}} sectorShape="rectangle" onPickShape={() => {}} />)
+    const tool = screen.getByRole('button', { name: 'Draw Sector' })
+    fireEvent.contextMenu(tool)
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+    expect(screen.queryByRole('menu')).toBeNull()
+
+    fireEvent.contextMenu(tool)
+    fireEvent.pointerDown(document.body)
+    expect(screen.queryByRole('menu')).toBeNull()
+})
+
+test('a right-click on a greyed Draw Sector opens no menu', () => {
+    render(<Toolbar tool="select" onPick={() => {}} greyed={{ sector: 'Draw a search area first' }} sectorShape="rectangle" onPickShape={() => {}} />)
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Draw Sector' }))
+    expect(screen.queryByRole('menu')).toBeNull()
+})
+
 test('a greyed tool is not picked by a press or by its key, and its tooltip says why', () => {
     const onPick = vi.fn()
     render(<Toolbar tool="select" onPick={onPick} greyed={{ 'search-area': 'Open a mission first' }} />)

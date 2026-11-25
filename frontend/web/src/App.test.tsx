@@ -40,7 +40,10 @@ vi.mock('./map/missionMap.ts', () => ({ useMissionMap: () => fakeMap }))
 
 // Drawing needs a real map too, so a tool that draws is handed a drawing that does nothing.
 vi.mock('./map/drawRectangle.ts', () => ({ drawRectangle: () => ({ clear() {}, stop() {} }) }))
-vi.mock('./map/drawSector.ts', () => ({ drawSector: () => ({ discard() {}, stop() {} }) }))
+vi.mock('./map/drawSector.ts', () => ({ drawSector: () => ({ discard() {}, stop() {}, edit() {} }) }))
+vi.mock('./map/drawCustomShape.ts', () => ({
+    drawCustomShape: () => ({ undo() {}, redo() {}, close() {}, discard() {}, stop() {} }),
+}))
 
 // The style comes from the backend too. This one lists two layer groups and two trail uses.
 vi.mock('./map/mapStyle.ts', () => ({
@@ -225,7 +228,22 @@ test('with a search area, picking Draw Sector starts the tool, and its hint line
     fireEvent.click(screen.getByRole('button', { name: 'Draw Sector' }))
 
     expect(screen.getByRole('button', { name: 'Draw Sector' }).getAttribute('aria-pressed')).toBe('true')
-    expect(screen.getByRole('status').textContent).toBe('Drag on the map to draw a sector.')
+    expect(screen.getByRole('status').textContent).toBe('Drag on the map to draw a rectangle. Right-click the tool for a custom shape.')
+})
+
+test('picking Custom shape from the Draw Sector menu starts a custom shape, and the tool keeps that shape', () => {
+    withBearCreek({ min_lat: 39.9, min_lon: -105.7, max_lat: 40.1, max_lon: -105.5 })
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Draw Sector' }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Custom shape' }))
+
+    expect(screen.getByRole('status').textContent).toBe('Click the map to drop the first point.')
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy()  // in the toolbar while the shape is drawn
+
+    // Leaving the tool and picking it again starts the shape last picked.
+    fireEvent.click(screen.getByRole('button', { name: 'Select' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Draw Sector' }))
+    expect(screen.getByRole('status').textContent).toBe('Click the map to drop the first point.')
 })
 
 test('hovering the Select tool shows its name and key, and leaving hides them', () => {

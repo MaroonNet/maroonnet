@@ -1,33 +1,57 @@
 import type { Polygon } from 'geojson'
 import type { Map as MapLibreMap } from 'maplibre-gl'
-import { TerraDraw, TerraDrawRectangleMode, TerraDrawSelectMode } from 'terra-draw'
+import { TerraDraw, TerraDrawPolygonMode, TerraDrawRectangleMode, TerraDrawSelectMode } from 'terra-draw'
 import { TerraDrawMapLibreGLAdapter } from 'terra-draw-maplibre-gl-adapter'
 import { onOrInside, type Bounds, type Position } from './geo.ts'
+
+// The two ways to draw a sector: drag out a rectangle, or click its corners one at a time
+// (drawCustomShape.ts).
+export type SectorShape = 'rectangle' | 'custom'
 
 // A sector being drawn on the map.
 export type SectorDrawing = {
     discard: () => void  // takes the shape off the map; the next drag starts a new one
     stop: () => void     // ends the drawing: the shape goes, and a drag moves the map again
+    // Puts a finished shape on the map with its corners ready to drag, as a drawn rectangle's
+    // are: a custom shape once closed.
+    edit: (corners: Position[]) => void
 }
 
 type Listeners = {
     change: (corners: Position[]) => void  // the shape so far: while dragged out, and while a corner is dragged
-    finish: (corners: Position[]) => void  // the shape is drawn; its corners can now be dragged
+    finish: (corners: Position[]) => void  // a rectangle is drawn; its corners can now be dragged
     outside: () => void                    // a rectangle was let go wholly outside the search area, so nothing was drawn
 }
 
 const RED = '#c9302d'  // a drawn sector's red (SECTOR_COLORS in sectors/looks.ts)
 
+// Terra Draw's name for a shape that came in by edit(). The polygon mode is registered so
+// such a shape belongs to a mode, but it is never turned on: a custom shape is clicked out
+// by drawCustomShape.ts, which keeps the rules for corners.
+const GIVEN = 'polygon'
+
 // Lets the user draw one sector on the map, kept inside the search area, with the drawing
-// library Terra Draw. Pressing and dragging draws a rectangle; once it is let go, each
-// corner can be dragged. Nothing goes past the search area line: an edge of the rectangle
-// past it is brought back onto it, and a dragged corner slides along it. A dragged corner
-// cannot make two sides cross.
-export function drawSector(map: MapLibreMap, area: Bounds, on: Listeners): SectorDrawing {
+// library Terra Draw. For a rectangle, pressing and dragging draws it; once it is let go,
+// each corner can be dragged. A custom shape is handed over by edit() once closed. Nothing
+// goes past the search area line: an edge of the rectangle past it is brought back onto it,
+// and a dragged corner slides along it. A dragged corner cannot make two sides cross.
+export function drawSector(map: MapLibreMap, area: Bounds, shape: SectorShape, on: Listeners): SectorDrawing {
     // Where a pointer past the line is taken to be: the nearest place on the line.
     const keepInside = ({ lng, lat }: { lng: number, lat: number }) => {
         const place = onOrInside({ lat, lon: lng }, area)
         return [place.lon, place.lat]
+    }
+    // How a finished shape's corners may be dragged.
+    const dragCorners = {
+        feature: {
+            selfIntersectable: false,  // a drag that would cross two sides is not taken
+            coordinates: {
+                draggable: true,
+                snappable: { toCustom: keepInside },
+                midpoints: false,   // no corners added by dragging a side's middle
+                deletable: false,   // and none taken away
+            },
+        },
     }
     const draw = new TerraDraw({
         adapter: new TerraDrawMapLibreGLAdapter({ map }),
@@ -36,25 +60,14 @@ export function drawSector(map: MapLibreMap, area: Bounds, on: Listeners): Secto
                 drawInteraction: 'click-drag',  // press, drag, let go
                 styles: { fillColor: RED, fillOpacity: 0.08, outlineColor: RED, outlineWidth: 2 },
             }),
+            new TerraDrawPolygonMode({ styles: { fillColor: RED, fillOpacity: 0.08, outlineColor: RED, outlineWidth: 2 } }),
             // Once drawn, the shape is held "selected", which shows its corners as handles.
             // Only this code selects it, and a click elsewhere does not let it go.
             new TerraDrawSelectMode({
                 allowManualSelection: false,
                 allowManualDeselection: false,
                 keyEvents: null,  // no keys: Delete and Escape are the tool's own
-                flags: {
-                    rectangle: {
-                        feature: {
-                            selfIntersectable: false,  // a drag that would cross two sides is not taken
-                            coordinates: {
-                                draggable: true,
-                                snappable: { toCustom: keepInside },
-                                midpoints: false,   // no corners added by dragging a side's middle
-                                deletable: false,   // and none taken away
-                            },
-                        },
-                    },
-                },
+                flags: { rectangle: dragCorners, [GIVEN]: dragCorners },
                 styles: {
                     selectedPolygonColor: RED, selectedPolygonFillOpacity: 0.08,
                     selectedPolygonOutlineColor: RED, selectedPolygonOutlineWidth: 2,
@@ -88,44 +101,69 @@ export function drawSector(map: MapLibreMap, area: Bounds, on: Listeners): Secto
             on.outside()
             return
         }
-        const ring = [...inside, inside[0]].map(({ lat, lon }) => [lon, lat])
-        draw.updateFeatureGeometry(id, { type: 'Polygon', coordinates: [ring] })
-        drawn = id
-        draw.setMode('select')
-        draw.selectFeature(id)
+        draw.updateFeatureGeometry(id, ringOf(inside))
+        holdForEditing(id)
         on.finish(inside)
     })
 
+    // The shape's corners become handles to drag.
+    function holdForEditing(id: string | number) {
+        drawn = id
+        draw.setMode('select')
+        draw.selectFeature(id)
+    }
+
     // Terra Draw adds its layers to the map's style, which must have loaded first. If it has
-    // not, the drawing starts when the map next comes to rest ("idle").
+    // not, the drawing starts when the map next comes to rest ("idle"). For a custom shape
+    // Terra Draw has nothing to do until the shape is closed, so it starts then, and the
+    // clicks that place the corners reach the map untouched.
     let stopped = false
     function start() {
-        if (stopped) return
+        if (stopped || draw.enabled) return
         draw.start()
-        draw.setMode('rectangle')
+        draw.setMode(shape === 'rectangle' ? 'rectangle' : 'select')
     }
-    if (map.isStyleLoaded()) start()
-    else map.once('idle', start)
+    if (shape === 'rectangle') {
+        if (map.isStyleLoaded()) start()
+        else map.once('idle', start)
+    }
 
     return {
         discard() {
             if (!draw.enabled) return
             drawn = null
             draw.clear()
-            draw.setMode('rectangle')
+            draw.setMode(shape === 'rectangle' ? 'rectangle' : 'select')
         },
         stop() {
             stopped = true
             if (draw.enabled) draw.stop()
         },
+        edit(corners) {
+            start()
+            const [added] = draw.addFeatures([{ type: 'Feature', geometry: ringOf(corners), properties: { mode: GIVEN } }])
+            if (added?.valid && added.id !== undefined) holdForEditing(added.id)
+            else console.error('The drawing library refused the shape:', added?.reason)
+        },
     }
+}
+
+// Terra Draw keeps no more than nine decimal places of a degree (about a millimeter), and
+// refuses a shape with more. A map click gives about fifteen.
+const PLACES = 1e9
+const rounded = (degrees: number) => Math.round(degrees * PLACES) / PLACES
+
+// The corners as a shape Terra Draw keeps: longitude first, and back to the first corner.
+function ringOf(corners: Position[]): Polygon {
+    return { type: 'Polygon', coordinates: [[...corners, corners[0]].map(({ lat, lon }) => [rounded(lon), rounded(lat)])] }
 }
 
 // The corners of the sector's shape, without the ring's repeat of the first, or nothing
 // when this id is not the sector (a corner handle, or a shape already removed).
 function sectorCorners(draw: TerraDraw, id: string | number): Position[] | null {
     const shape = draw.getSnapshotFeature(id)
-    if (shape?.geometry.type !== 'Polygon' || shape.properties.mode !== 'rectangle') return null
+    const mode = shape?.properties.mode
+    if (shape?.geometry.type !== 'Polygon' || (mode !== 'rectangle' && mode !== GIVEN)) return null
     const ring = (shape.geometry as Polygon).coordinates[0]
     return ring.slice(0, -1).map(([lon, lat]) => ({ lat, lon }))
 }

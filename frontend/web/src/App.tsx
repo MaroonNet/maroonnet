@@ -15,6 +15,7 @@ import AreaPanel from './searchArea/AreaPanel.tsx'
 import DrawSearchArea from './searchArea/DrawSearchArea.tsx'
 import SearchAreaOutline from './searchArea/SearchAreaOutline.tsx'
 import { useMapOverSearchArea, useSearchArea } from './searchArea/searchArea.ts'
+import type { SectorShape } from './map/drawSector.ts'
 import DrawSector from './sectors/DrawSector.tsx'
 import SectorsOnMap from './sectors/SectorsOnMap.tsx'
 import SettingsPanel from './settings/SettingsPanel.tsx'
@@ -34,13 +35,16 @@ const NO_AREA = { sector: 'Draw a search area first' }
 function App() {
   const [openPanel, setOpenPanel] = useState<PanelId | null>(null)  // one panel is open at a time
   const [tool, setTool] = useState<ToolId>('select')  // the picked map tool
+  const [sectorShape, setSectorShape] = useState<SectorShape>('rectangle')  // what Draw Sector draws; kept until changed
   // The Layers panel changes these two lists and the map draws from them. They are held here
   // so the choices are kept while the panel is closed.
   const [hidden, setHidden] = useState<string[]>([])  // the layer groups the user has hidden
   const [pickedUses, setPickedUses] = useState<string[]>([])  // the trail uses ticked; none: all trails
-  // The spot under the toolbar where the tool in use draws its hint line. It is kept as
-  // state so the tool is drawn again once the spot exists.
+  // The spot under the toolbar where the tool in use draws its hint line, and the spot at the
+  // toolbar's end where it puts buttons of its own. They are kept as state so the tool is
+  // drawn again once the spots exist.
   const [hintSlot, setHintSlot] = useState<HTMLElement | null>(null)
+  const [toolSlot, setToolSlot] = useState<HTMLElement | null>(null)
   const { mission } = useMission()
   const { area } = useSearchArea()
 
@@ -101,11 +105,17 @@ function App() {
         {/* What floats over the map's top left corner. It moves right when a panel opens,
             so the panel does not cover it. */}
         <div className={`absolute top-3.5 left-3.5 z-10 flex flex-col items-start gap-2 ${openPanel ? 'translate-x-panel' : ''}`}>
-          <Toolbar tool={tool} onPick={setTool} greyed={greyed} />
+          <Toolbar tool={tool} onPick={setTool} greyed={greyed} sectorShape={sectorShape} onPickShape={setSectorShape}>
+            {/* "contents": the spot takes no room of its own; what is put in it sits in the row. */}
+            <div ref={setToolSlot} className="contents" />
+          </Toolbar>
           <div ref={setHintSlot} />
         </div>
         {tool === 'search-area' && <DrawSearchArea hintSlot={hintSlot} onDone={() => setTool('select')} />}
-        {tool === 'sector' && <DrawSector hintSlot={hintSlot} onDone={() => setTool('select')} />}
+        {/* key: picking the other shape starts the tool afresh. */}
+        {tool === 'sector' && (
+          <DrawSector key={sectorShape} shape={sectorShape} hintSlot={hintSlot} toolSlot={toolSlot} onDone={() => setTool('select')} />
+        )}
         <MapControls />
       </main>
       <StillRunningBox />
