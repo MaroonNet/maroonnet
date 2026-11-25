@@ -183,6 +183,16 @@ test('the choices are kept while the panel is closed', () => {
     expect((screen.getByRole('checkbox', { name: 'Contours' }) as HTMLInputElement).checked).toBe(false)
 })
 
+test('a mission layer\'s choice is kept while the panel is closed', () => {
+    render(<App />)
+    openLayers()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Tracks walked' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close panel' }))
+    openLayers()
+    expect((screen.getByRole('checkbox', { name: 'Tracks walked' }) as HTMLInputElement).checked).toBe(false)
+    expect((screen.getByRole('checkbox', { name: 'Sectors' }) as HTMLInputElement).checked).toBe(true)
+})
+
 test('the toolbar shows the Select tool, picked', () => {
     render(<App />)
     expect(screen.getByRole('button', { name: 'Select' }).getAttribute('aria-pressed')).toBe('true')

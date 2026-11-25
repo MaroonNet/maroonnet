@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
+import type { LayerChoice } from '../layers/missionLayers.ts'
 import { STRIPES, stripesImage } from './looks.ts'
 import { groupColor } from '../teams/teamWords.ts'
 import { NEVER_HELD, NO_LIFE } from './sample.ts'
@@ -9,8 +10,8 @@ import SectorsOnMap from './SectorsOnMap.tsx'
 // The map library's two pieces for drawing a shape, as boxes that print what they were given.
 vi.mock('react-map-gl/maplibre', () => ({
     Source: ({ data, children }: { data: unknown, children: unknown }) => <div data-testid="source">{JSON.stringify(data)}{children as never}</div>,
-    Layer: ({ id, paint, filter }: { id: string, paint: unknown, filter: unknown }) => (
-        <div data-testid="layer">{id} {JSON.stringify(paint)} {JSON.stringify(filter)}</div>
+    Layer: ({ id, paint, filter, layout }: { id: string, paint: unknown, filter: unknown, layout: unknown }) => (
+        <div data-testid="layer">{id} {JSON.stringify(paint)} {JSON.stringify(filter)} {JSON.stringify(layout)}</div>
     ),
 }))
 
@@ -49,12 +50,12 @@ function sector(id: number, status: Sector['status'], group_id: number | null = 
     }
 }
 
-function draw(sectors: Sector[], selected: number | null = null, onPick?: (id: number) => void, hidden: number | null = null) {
+function draw(sectors: Sector[], selected: number | null = null, onPick?: (id: number) => void, hidden: number | null = null, layer?: LayerChoice) {
     const addImage = vi.fn((name: string) => { pretend.map.images.add(name) })
     pretend.map.addImage = addImage
     render(
         <SectorsContext value={{ sectors, loadedFor: 'az07', add: async () => '', changeShape: async () => '', remove: async () => '', ...NO_LIFE }}>
-            <SectorsOnMap selected={selected} onPick={onPick} hidden={hidden} />
+            <SectorsOnMap selected={selected} onPick={onPick} hidden={hidden} layer={layer} />
         </SectorsContext>,
     )
     const shapes = JSON.parse(screen.getByTestId('source').firstChild!.textContent!)
@@ -147,6 +148,23 @@ test('while picking is on, a click on a sector picks it', () => {
 test('while a drawing tool is in use, a click on a sector picks nothing', () => {
     draw([sector(7, 'drawn')])
     expect(pretend.map.listeners['click sectors-hit']).toBeUndefined()
+})
+
+const SECTOR_LAYERS = ['sectors-hit', 'sectors-fill', 'sectors-stripes', 'sectors-line', 'sectors-label']
+
+test('with the Sectors layer at half opacity, the fill, stripes, outline and names are each half as strong', () => {
+    draw([sector(1, 'completed'), sector(4, 'partial')], null, undefined, null, { shown: true, opacity: 0.5 })
+    expect(layer('sectors-fill')).toContain('"fill-opacity":0.09')
+    expect(layer('sectors-stripes')).toContain('"fill-opacity":0.5')
+    expect(layer('sectors-line')).toContain('"line-opacity":0.5')
+    expect(layer('sectors-label')).toContain('"text-opacity":0.5')
+    for (const id of SECTOR_LAYERS) expect(layer(id)).toContain('"visibility":"visible"')
+})
+
+test('with the Sectors layer unticked nothing of a sector is drawn, and a click finds none', () => {
+    draw([sector(7, 'drawn')], null, () => {}, null, { shown: false, opacity: 1 })
+    // The map reads a click only from layers that are drawn, so the hidden click layer picks nothing.
+    for (const id of SECTOR_LAYERS) expect(layer(id)).toContain('"visibility":"none"')
 })
 
 test('the stripe picture is given to the map, and given again when the map asks for it', () => {

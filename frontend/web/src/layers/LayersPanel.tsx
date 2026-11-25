@@ -1,4 +1,7 @@
+import { IconChevronDown, IconChevronRight } from '@tabler/icons-react'
+import { useState } from 'react'
 import type { LayerGroup, TrailUse } from '../map/styleChoices'
+import { MISSION_LAYERS, type LayerChoice, type MissionLayerChoices, type MissionLayerId } from './missionLayers.ts'
 
 type Props = {
     groups: LayerGroup[]
@@ -7,15 +10,63 @@ type Props = {
     trailUses: TrailUse[]
     pickedUses: string[]                      // the trail uses ticked; none ticked: all trails
     setPickedUses: (pickedUses: string[]) => void
+    missionLayers: MissionLayerChoices        // how each mission layer is drawn
+    setMissionLayers: (missionLayers: MissionLayerChoices) => void
 }
 
-// The contents of the Layers panel. Checkboxes that hide and show groups of map layers (each
-// layer's metadata.group in the style), and under Trails, checkboxes that narrow the trails to
-// the ones open to any ticked use.
-function LayersPanel({ groups, hidden, setHidden, trailUses, pickedUses, setPickedUses }: Props) {
+// The contents of the Layers panel. First the mission layers, which the app draws over the
+// map: each has a checkbox, and an arrow that opens its opacity slider. Then the basemap:
+// checkboxes that hide and show groups of map layers (each layer's metadata.group in the
+// style), and under Trails, checkboxes that narrow the trails to the ones open to any
+// ticked use.
+function LayersPanel({ groups, hidden, setHidden, trailUses, pickedUses, setPickedUses, missionLayers, setMissionLayers }: Props) {
+    const [openSlider, setOpenSlider] = useState<MissionLayerId | null>(null)  // one slider is open at a time
+    const change = (id: MissionLayerId, choice: Partial<LayerChoice>) =>
+        setMissionLayers({ ...missionLayers, [id]: { ...missionLayers[id], ...choice } })
     return (
         <div className="pt-1.5 pb-2.5">
-            <h3 className="px-4 pt-3 pb-1 font-mono text-label tracking-widest text-muted uppercase">Basemap</h3>
+            <Heading>Mission</Heading>
+            {MISSION_LAYERS.map(({ id, label }) => {
+                const { shown, opacity } = missionLayers[id]
+                const open = openSlider === id
+                const percent = Math.round(opacity * 100)
+                return (
+                    <div key={id}>
+                        <div className="flex items-center">
+                            <div className="min-w-0 flex-1">
+                                <CheckRow label={label} checked={shown} onChange={(checked) => change(id, { shown: checked })} />
+                            </div>
+                            <button
+                                type="button"
+                                aria-label={`Opacity of ${label}`}
+                                title="Opacity"
+                                aria-expanded={open}
+                                onClick={() => setOpenSlider(open ? null : id)}
+                                className="mr-2.5 flex size-5 flex-none cursor-pointer items-center justify-center rounded-control hover:bg-strip"
+                            >
+                                {open ? <IconChevronDown size={14} stroke={1.75} aria-hidden /> : <IconChevronRight size={14} stroke={1.75} aria-hidden />}
+                            </button>
+                        </div>
+                        {open && (
+                            <div className="flex items-center gap-2.5 pt-0.5 pr-4 pb-1.5 pl-10">
+                                <span className="font-mono text-label tracking-widest text-muted uppercase">Opacity</span>
+                                <input
+                                    type="range"
+                                    min={0}
+                                    max={100}
+                                    step={5}
+                                    value={percent}
+                                    aria-label={`Opacity of ${label}`}
+                                    onChange={(e) => change(id, { opacity: Number(e.target.value) / 100 })}
+                                    className="min-w-0 flex-1 accent-ink"
+                                />
+                                <span className="w-10 flex-none text-right font-mono text-figure">{percent}%</span>
+                            </div>
+                        )}
+                    </div>
+                )
+            })}
+            <Heading>Basemap</Heading>
             {groups.map((group) => (
                 <div key={group.id}>
                     <CheckRow
@@ -39,6 +90,10 @@ function LayersPanel({ groups, hidden, setHidden, trailUses, pickedUses, setPick
             ))}
         </div>
     )
+}
+
+function Heading({ children }: { children: string }) {
+    return <h3 className="px-4 pt-3 pb-1 font-mono text-label tracking-widest text-muted uppercase">{children}</h3>
 }
 
 // One row: a checkbox and its label. Pressing anywhere on the row ticks it.

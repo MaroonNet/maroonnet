@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import type { CSSProperties, ReactNode } from 'react'
 import { afterEach, expect, test, vi } from 'vitest'
+import type { LayerChoice } from '../layers/missionLayers.ts'
 import { PeopleContext } from '../people/people.ts'
 import { RADIOS } from '../teams/sample.ts'
 import { groupColor, NO_GROUP_COLOR } from '../teams/teamWords.ts'
@@ -59,13 +60,22 @@ type Drawn = {
     waypoint?: number | null    // the selected waypoint
     onPick?: (stack: Stack) => void
     hidden?: number | null
+    teamsLayer?: LayerChoice
+    waypointsLayer?: LayerChoice
 }
 
-function draw({ waypoints = [], radios = [], team = null, waypoint = null, onPick, hidden = null }: Drawn) {
+function draw({ waypoints = [], radios = [], team = null, waypoint = null, onPick, hidden = null, teamsLayer, waypointsLayer }: Drawn) {
     render(
         <PeopleContext value={{ roster: [], people: [], radios, groups: [], run: async () => '' }}>
             <WaypointsContext value={board(waypoints)}>
-                <MarkersOnMap selectedTeam={team} selectedWaypoint={waypoint} onPick={onPick} hidden={hidden} />
+                <MarkersOnMap
+                    selectedTeam={team}
+                    selectedWaypoint={waypoint}
+                    onPick={onPick}
+                    hidden={hidden}
+                    teamsLayer={teamsLayer}
+                    waypointsLayer={waypointsLayer}
+                />
             </WaypointsContext>
         </PeopleContext>,
     )
@@ -192,6 +202,31 @@ test('teams and waypoints on the same spot are one stack, and a click picks them
 test('one team on one waypoint is counted in the singular', () => {
     draw({ waypoints: ARIZONA07.slice(0, 1), radios: RADIOS.slice(0, 1) })
     expect(labels()).toEqual(['', '1 team · 1 waypoint'])
+})
+
+// The Layers panel's two rows
+
+const HIDDEN = { shown: false, opacity: 1 }
+
+test('with the Team positions layer unticked only the waypoints are drawn, and a stack counts and picks only them', () => {
+    const onPick = vi.fn()
+    const markers = draw({ waypoints: ARIZONA07.slice(0, 1), radios: RADIOS, onPick, teamsLayer: HIDDEN })
+    expect(labels()).toEqual(['Command post'])
+    fireEvent.click(markers[0])
+    expect(onPick).toHaveBeenCalledWith({ teams: [], waypoints: [1] })
+})
+
+test('with the Waypoints layer unticked only the teams are drawn', () => {
+    draw({ waypoints: ARIZONA07, radios: RADIOS, waypointsLayer: HIDDEN })
+    expect(labels()).toEqual(['', '', '3 teams'])
+})
+
+test("each marker is as strong as its own layer's opacity", () => {
+    const markers = draw({
+        waypoints: ARIZONA07.slice(2, 3), radios: [team(4, null)],
+        teamsLayer: { shown: true, opacity: 0.5 }, waypointsLayer: { shown: true, opacity: 0.25 },
+    })
+    expect(markers.map((marker) => (marker.firstElementChild as HTMLElement).style.opacity)).toEqual(['0.25', '0.5'])
 })
 
 test('the selected team is marked', () => {

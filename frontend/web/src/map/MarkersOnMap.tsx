@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Marker } from 'react-map-gl/maplibre'
+import { SHOWN, type LayerChoice } from '../layers/missionLayers.ts'
 import { usePeople } from '../people/people.ts'
 import { groupLabel, radioLabel } from '../people/peopleWords.ts'
 import TeamMarker from '../teams/TeamMarker.tsx'
@@ -16,6 +17,9 @@ type Props = {
     selectedWaypoint: number | null     // the id of the selected waypoint, drawn with a ring
     onPick?: (stack: Stack) => void     // given while a click on a marker picks it (the Select tool)
     hidden?: number | null              // a waypoint being edited, drawn by the editing's pin instead
+    // The Layers panel's choices for Team positions and for Waypoints: shown or not, and how solid.
+    teamsLayer?: LayerChoice
+    waypointsLayer?: LayerChoice
 }
 
 // One thing with a marker: a waypoint at its place, or a team at its newest position.
@@ -26,15 +30,18 @@ type Placed = { lat: number, lon: number, waypoint?: Waypoint, team?: Radio }
 // position, with its short name inside. Markers on the same spot of the screen, of either
 // sort, are one stack: one label counts them, and a click picks them all, so a card can ask
 // which is meant. It is drawn inside the map (a child of MissionMap). The markers are page
-// elements laid over the map, so they sit above the sectors and the tracks.
-function MarkersOnMap({ selectedTeam, selectedWaypoint, onPick, hidden = null }: Props) {
+// elements laid over the map, so they sit above the sectors and the tracks. A sort unticked
+// in the Layers panel has no markers, so a stack counts and picks only what shows.
+function MarkersOnMap({ selectedTeam, selectedWaypoint, onPick, hidden = null, teamsLayer = SHOWN, waypointsLayer = SHOWN }: Props) {
     const map = useMissionMap()
     const { waypoints } = useWaypoints()
     const { radios } = usePeople()
+    const shownWaypoints = waypointsLayer.shown ? waypoints.filter((waypoint) => waypoint.id !== hidden) : []
+    const shownTeams = teamsLayer.shown ? teamsOnMap(radios) : []
     // Waypoints first, so in a stack of both a team is drawn on top.
     const placed: Placed[] = [
-        ...waypoints.filter((waypoint) => waypoint.id !== hidden).map((waypoint) => ({ lat: waypoint.lat, lon: waypoint.lon, waypoint })),
-        ...teamsOnMap(radios).map((team) => ({ lat: team.last_position!.lat, lon: team.last_position!.lon, team })),
+        ...shownWaypoints.map((waypoint) => ({ lat: waypoint.lat, lon: waypoint.lon, waypoint })),
+        ...shownTeams.map((team) => ({ lat: team.last_position!.lat, lon: team.last_position!.lon, team })),
     ]
 
     // How close two markers are on screen depends on the zoom, so the stacks are worked out
@@ -79,6 +86,7 @@ function MarkersOnMap({ selectedTeam, selectedWaypoint, onPick, hidden = null }:
                     <div
                         title={waypoint ? `${waypoint.name} · ${kindOf(waypoint.kind).label}` : `${radioLabel(team!.id)} · ${groupLabel(team!.group_id)}`}
                         aria-current={ringed ? 'true' : undefined}
+                        style={{ opacity: (waypoint ? waypointsLayer : teamsLayer).opacity }}
                         className="relative flex"
                     >
                         {waypoint ? <KindMarker kind={waypoint.kind} ringed={ringed} /> : <TeamMarker radio={team!} ringed={ringed} />}

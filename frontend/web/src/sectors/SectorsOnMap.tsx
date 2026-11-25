@@ -2,6 +2,7 @@ import type { ExpressionSpecification, MapLayerMouseEvent } from 'maplibre-gl'
 import type { Feature, FeatureCollection, Point, Polygon } from 'geojson'
 import { useEffect } from 'react'
 import { Layer, Source } from 'react-map-gl/maplibre'
+import { SHOWN, type LayerChoice } from '../layers/missionLayers.ts'
 import { polygonCenter } from '../map/geo.ts'
 import { useMissionMap } from '../map/missionMap.ts'
 import { lookOf, mapLabel, sectorColor, STRIPES, stripesImage } from './looks.ts'
@@ -14,6 +15,7 @@ type Props = {
     selected: number | null             // the id of the selected sector, drawn with a stronger outline
     onPick?: (id: number) => void       // given while a click on a sector picks it (the Select tool)
     hidden?: number | null              // a sector whose shape is being edited, drawn by the editing instead
+    layer?: LayerChoice                 // the Layers panel's choice for Sectors: shown or not, and how solid
 }
 
 // The layer a click on a sector is read from: every sector, filled with nothing visible.
@@ -22,44 +24,52 @@ const HIT = 'sectors-hit'
 // The saved sectors on the map: an outline in the look's color, a light fill for a
 // completed sector (green) and one being searched (its group's color), orange stripes for
 // a partial one, and the name in the middle, with the group for a sector a group holds. It
-// is drawn inside the map (a child of MissionMap), above the search area line.
-function SectorsOnMap({ selected, onPick, hidden = null }: Props) {
+// is drawn inside the map (a child of MissionMap), above the search area line. Unticked in
+// the Layers panel, its layers stay on the map and are switched off, so they keep their
+// place under the tracks; a layer switched off takes no clicks.
+function SectorsOnMap({ selected, onPick, hidden = null, layer = SHOWN }: Props) {
     const { sectors } = useSectors()
     useStripes()
     usePicking(onPick)
     const isSelected: ExpressionSpecification = ['==', ['get', 'id'], selected ?? -1]
     const shown = sectors.filter((sector) => sector.id !== hidden)
+    const { opacity } = layer
+    const visibility = layer.shown ? 'visible' : 'none'
     return (
         <Source id="sectors" type="geojson" data={sectorShapes(shown)}>
-            <Layer id={HIT} type="fill" paint={{ 'fill-color': '#000000', 'fill-opacity': 0 }} />
+            <Layer id={HIT} type="fill" layout={{ visibility }} paint={{ 'fill-color': '#000000', 'fill-opacity': 0 }} />
             <Layer
                 id="sectors-fill"
                 type="fill"
                 filter={['in', ['get', 'look'], ['literal', ['completed', 'searching']]]}
-                paint={{ 'fill-color': COLOR, 'fill-opacity': 0.18 }}
+                layout={{ visibility }}
+                paint={{ 'fill-color': COLOR, 'fill-opacity': 0.18 * opacity }}
             />
             <Layer
                 id="sectors-stripes"
                 type="fill"
                 filter={['==', ['get', 'look'], 'partial']}
-                paint={{ 'fill-pattern': STRIPES }}
+                layout={{ visibility }}
+                paint={{ 'fill-pattern': STRIPES, 'fill-opacity': opacity }}
             />
             <Layer
                 id="sectors-line"
                 type="line"
-                paint={{ 'line-color': COLOR, 'line-width': ['case', isSelected, 4, 2] }}
+                layout={{ visibility }}
+                paint={{ 'line-color': COLOR, 'line-width': ['case', isSelected, 4, 2], 'line-opacity': opacity }}
             />
             <Layer
                 id="sectors-label"
                 type="symbol"
                 filter={['==', ['geometry-type'], 'Point']}
                 layout={{
+                    visibility,
                     'text-field': ['get', 'label'],
                     'text-font': ['Noto Sans Bold'],  // one of the map style's own fonts
                     'text-size': 13,
                     'text-allow-overlap': true,  // a sector's name always shows
                 }}
-                paint={{ 'text-color': COLOR, 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 }}
+                paint={{ 'text-color': COLOR, 'text-halo-color': '#ffffff', 'text-halo-width': 1.5, 'text-opacity': opacity }}
             />
         </Source>
     )

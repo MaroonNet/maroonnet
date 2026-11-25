@@ -4,6 +4,7 @@ import Panel from './frame/Panel.tsx'
 import Rail, { type PanelId } from './frame/Rail.tsx'
 import Toolbar, { type ToolId } from './frame/Toolbar.tsx'
 import LayersPanel from './layers/LayersPanel.tsx'
+import { AS_OPENED } from './layers/missionLayers.ts'
 import MarkersOnMap from './map/MarkersOnMap.tsx'
 import MissionMap from './map/MissionMap.tsx'
 import StackCard from './map/StackCard.tsx'
@@ -55,6 +56,8 @@ function App() {
   // so the choices are kept while the panel is closed.
   const [hidden, setHidden] = useState<string[]>([])  // the layer groups the user has hidden
   const [pickedUses, setPickedUses] = useState<string[]>([])  // the trail uses ticked; none: all trails
+  // The same for the mission layers: whether each shows, and how solid it is drawn.
+  const [missionLayers, setMissionLayers] = useState(AS_OPENED)
   // The spot under the toolbar where the tool in use draws its hint line, and the spot at the
   // toolbar's end where it puts buttons of its own. They are kept as state so the tool is
   // drawn again once the spots exist.
@@ -159,6 +162,8 @@ function App() {
               trailUses={layerLists.trail_uses}
               pickedUses={pickedUses}
               setPickedUses={setPickedUses}
+              missionLayers={missionLayers}
+              setMissionLayers={setMissionLayers}
             />
           ) : (
             <p className="px-4 py-3 font-medium text-muted">The map's layers could not be loaded.</p>
@@ -177,13 +182,16 @@ function App() {
             selected={selectedSector}
             onPick={tool === 'select' && !editing ? pickSector : undefined}
             hidden={editingSector}
+            layer={missionLayers.sectors}
           />
-          <TracksOnMap selected={selectedTeam} />
+          <TracksOnMap selected={selectedTeam} layer={missionLayers.tracks} />
           <MarkersOnMap
             selectedTeam={selectedTeam}
             selectedWaypoint={selectedWaypoint}
             onPick={tool === 'select' && !editing ? pickMarkers : undefined}
             hidden={editingWaypointId}
+            teamsLayer={missionLayers.teams}
+            waypointsLayer={missionLayers.waypoints}
           />
           {tool === 'measure' && <MeasureTool hintSlot={hintSlot} />}
         </MissionMap>

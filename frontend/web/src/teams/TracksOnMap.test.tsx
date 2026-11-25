@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
+import type { LayerChoice } from '../layers/missionLayers.ts'
 import { TRACKS } from './sample.ts'
 import { groupColor, NO_GROUP_COLOR } from './teamWords.ts'
 import { TracksContext, type Track } from './tracks.ts'
@@ -17,8 +18,8 @@ afterEach(cleanup)
 
 type Line = { properties: { radio: number, color: string }, geometry: { type: string, coordinates: number[][] } }
 
-function draw(tracks: Track[], selected: number | null = null): Line[] {
-    render(<TracksContext value={tracks}><TracksOnMap selected={selected} /></TracksContext>)
+function draw(tracks: Track[], selected: number | null = null, choice?: LayerChoice): Line[] {
+    render(<TracksContext value={tracks}><TracksOnMap selected={selected} layer={choice} /></TracksContext>)
     return JSON.parse(screen.getByTestId('source').firstChild!.textContent!).features
 }
 
@@ -56,4 +57,18 @@ test("the selected team's track is drawn stronger and on top, and the rest fade"
     expect(layer()).toContain(`"line-width":["case",${isSelected},4.5,2.5]`)
     expect(layer()).toContain(`"line-opacity":["case",${isSelected},1,0.25]`)
     expect(layer()).toContain(`"line-sort-key":["case",${isSelected},1,0]`)
+})
+
+test('with the Tracks walked layer at half opacity every track is half as strong, selected or not', () => {
+    draw(TRACKS, null, { shown: true, opacity: 0.5 })
+    expect(layer()).toContain('"line-opacity":0.425')
+    expect(layer()).toContain('"visibility":"visible"')
+    cleanup()
+    draw(TRACKS, 4, { shown: true, opacity: 0.5 })
+    expect(layer()).toContain('"line-opacity":["case",["==",["get","radio"],4],0.5,0.125]')
+})
+
+test('with the Tracks walked layer unticked no track is drawn', () => {
+    draw(TRACKS, null, { shown: false, opacity: 1 })
+    expect(layer()).toContain('"visibility":"none"')
 })
