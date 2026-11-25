@@ -6,6 +6,7 @@
     GET  /api/mission/groups        every group: its teams and the sector it holds
     POST /api/mission/groups        make a group from teams
     PUT  /api/mission/groups/{id}   set which teams are in a group
+    GET  /api/mission/tracks        where each searcher radio has been, cut where it changed group
 
 A team's id is its radio's id. Each route that changes a team answers with its radio as it
 now is, and each that changes a group answers with that group.
@@ -17,8 +18,9 @@ from sqlmodel import Session
 
 from mission.open_mission import changeable_session, mission_session
 
-from . import teams
+from . import teams, tracks
 from .teams import GroupFacts, RadioFacts
+from .tracks import Track
 
 router = APIRouter(prefix="/api/mission")
 
@@ -64,3 +66,8 @@ def post_group(new: GroupTeams, db: Session = Depends(changeable_session)) -> Gr
 @router.put("/groups/{group_id}")
 def put_group(group_id: int, change: GroupTeams, db: Session = Depends(changeable_session)) -> GroupFacts:
     return teams.change_group(db, group_id, change.radio_ids)
+
+
+@router.get("/tracks")
+def get_tracks(db: Session = Depends(mission_session)) -> list[Track]:
+    return tracks.list_tracks(db)
