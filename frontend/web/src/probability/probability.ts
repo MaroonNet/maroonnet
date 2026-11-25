@@ -26,6 +26,30 @@ export type MapRequest = {
     elapsed_h: number | null    // hours missing; none: the map takes no account of time
 }
 
+// The kinds of waypoint a map can be made from: the places a search starts out from.
+export const STARTING_KINDS = ['last_known_position', 'point_last_seen']
+
+// The model the app asks for, when it is there, and otherwise the first that can draw
+// anyone. "model_a" is the one the backend itself uses when none is named.
+const USUAL_MODEL = 'model_a'
+
+// The model a map is made with and the kinds of person it can draw, or none when no
+// fitted model can draw anyone.
+export function pickModel(status: ModelStatus): { name: string, kinds: string[] } | null {
+    const usable = Object.entries(status.models).filter(([, kinds]) => kinds.length > 0)
+    const picked = usable.find(([name]) => name === USUAL_MODEL) ?? usable[0]
+    return picked ? { name: picked[0], kinds: picked[1] } : null
+}
+
+// A kind of person as the form lists it: the model's own word, "child_7_12", as "Child 7 12".
+export function personLabel(kind: string): string {
+    const words = kind.replaceAll('_', ' ')
+    return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
+// The most hours missing the backend takes: thirty days.
+export const MOST_HOURS = 720
+
 export const loadOverlays = () => ask<Overlay[]>('/api/spm/predictions')  // newest first
 export const loadModelStatus = () => ask<ModelStatus>('/api/spm/status')
 export const makeOverlay = (request: MapRequest) => ask<Overlay>('/api/spm/predict', 'POST', request)

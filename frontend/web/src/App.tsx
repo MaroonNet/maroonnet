@@ -220,7 +220,13 @@ function App() {
         {editingWaypoint ? (
           <PlaceWaypoint key={editingWaypoint.id} editing={editingWaypoint} hintSlot={hintSlot} onDone={doneEditingWaypoint} />
         ) : selectedWaypoint !== null && !drawing && (
-          <WaypointCard id={selectedWaypoint} onClose={() => setSelectedWaypoint(null)} onEdit={setEditingWaypointId} />
+          <WaypointCard
+            id={selectedWaypoint}
+            onClose={() => setSelectedWaypoint(null)}
+            onEdit={setEditingWaypointId}
+            // A map just made is shown: its layer is ticked, at the opacity it was left at.
+            onMapMade={() => setMissionLayers((layers) => ({ ...layers, heatmap: { ...layers.heatmap, shown: true } }))}
+          />
         )}
         {selectedStack !== null && !editing && !drawing && (
           <StackCard stack={selectedStack} onPickTeam={pickTeam} onPickWaypoint={pickWaypoint} onClose={() => setSelectedStack(null)} />

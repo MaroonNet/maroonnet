@@ -93,6 +93,35 @@ test('in planning a waypoint can be edited and deleted', () => {
     expect(screen.getByRole('button', { name: 'Delete' })).toBeTruthy()
 })
 
+test('a last known position and a point last seen have Make Probability Map, and no other kind does', () => {
+    const seen = waypoint(7, 'point_last_seen', 'Seen by hiker')
+    const kinds = [...ARIZONA07, seen].map((one) => {
+        cleanup()
+        render(
+            <MissionContext value={{ mission: arizona(), loadFailed: false, run: async () => '' }}>
+                <WaypointsContext value={board([...ARIZONA07, seen])}>
+                    <WaypointCard id={one.id} onClose={() => {}} onEdit={() => {}} />
+                </WaypointsContext>
+            </MissionContext>,
+        )
+        return [one.kind, screen.queryByRole('button', { name: 'Make Probability Map' }) !== null]
+    })
+    expect(kinds).toEqual([
+        ['command_post', false], ['last_known_position', true], ['landing_zone', false], ['evidence', false],
+        ['find', false], ['find', false], ['point_last_seen', true],
+    ])
+})
+
+test.each(['paused', 'ended'] as const)('in a %s session a last known position has no Make Probability Map', (status) => {
+    show(2, status)
+    expect(screen.queryByRole('button', { name: 'Make Probability Map' })).toBeNull()
+})
+
+test('in planning a map can be made from a last known position', () => {
+    show(2, 'planning')
+    expect(screen.getByRole('button', { name: 'Make Probability Map' })).toBeTruthy()
+})
+
 test('a waypoint that is no longer on the board shows no card', () => {
     show(99)
     expect(screen.queryByRole('heading')).toBeNull()

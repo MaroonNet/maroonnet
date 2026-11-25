@@ -6,6 +6,8 @@ import { formatPosition } from '../map/position.ts'
 import { useMission } from '../mission/mission.ts'
 import { formatTime } from '../mission/missionTime.ts'
 import { radioLabel } from '../people/peopleWords.ts'
+import MakeProbabilityMap from '../probability/MakeProbabilityMap.tsx'
+import { STARTING_KINDS } from '../probability/probability.ts'
 import KindMarker from './KindMarker.tsx'
 import { kindOf } from './kinds.ts'
 import { useWaypoints, type Waypoint } from './waypoints.ts'
@@ -14,21 +16,23 @@ type Props = {
     id: number                          // the selected waypoint
     onClose: () => void                 // the card's close button, or the waypoint was deleted: nothing is selected
     onEdit: (id: number) => void        // Edit was pressed
+    onMapMade?: () => void              // a probability map was made from this waypoint
 }
 
 // The card of the selected waypoint. Shows nothing once it is no longer on the board.
 // (A click on several markers on one spot shows map/StackCard.tsx first.)
-function WaypointCard({ id, onClose, onEdit }: Props) {
+function WaypointCard({ id, onClose, onEdit, onMapMade = () => {} }: Props) {
     const waypoint = useWaypoints().waypoints.find((one) => one.id === id)
     if (!waypoint) return null
-    return <OneWaypoint key={waypoint.id} waypoint={waypoint} onClose={onClose} onEdit={onEdit} />
+    return <OneWaypoint key={waypoint.id} waypoint={waypoint} onClose={onClose} onEdit={onEdit} onMapMade={onMapMade} />
 }
 
-type OneProps = { waypoint: Waypoint, onClose: () => void, onEdit: (id: number) => void }
+type OneProps = { waypoint: Waypoint, onClose: () => void, onEdit: (id: number) => void, onMapMade: () => void }
 
 // One waypoint's card: its marker and name, its facts, its description and note, and its
-// buttons. A waypoint is edited and deleted here and nowhere else.
-function OneWaypoint({ waypoint, onClose, onEdit }: OneProps) {
+// buttons. A waypoint is edited and deleted here and nowhere else. A waypoint a search
+// starts out from also has Make Probability Map.
+function OneWaypoint({ waypoint, onClose, onEdit, onMapMade }: OneProps) {
     const { mission } = useMission()
     const { remove } = useWaypoints()
     const [asking, setAsking] = useState(false)  // "Delete it?" is on screen
@@ -70,6 +74,9 @@ function OneWaypoint({ waypoint, onClose, onEdit }: OneProps) {
                 <Button aria-disabled title="Not available yet" className="flex-1 opacity-40">Send</Button>
                 {changeable && <Button disabled={busy} onClick={() => setAsking(true)} className="flex-1">Delete</Button>}
             </div>
+
+            {/* A map is made while a mission is being planned or run, not once its session has stopped. */}
+            {changeable && STARTING_KINDS.includes(waypoint.kind) && <MakeProbabilityMap waypoint={waypoint} onMade={onMapMade} />}
 
             {asking && (
                 <ConfirmBox
