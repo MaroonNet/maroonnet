@@ -16,6 +16,7 @@ from people.routes import router as people_router
 from search_area.routes import router as search_area_router
 from sectors.routes import router as sectors_router
 from settings.routes import router as settings_router
+from teams.routes import router as teams_router
 
 
 # What runs once when the backend starts, before it answers any request.
@@ -40,6 +41,7 @@ app.include_router(search_area_router)
 app.include_router(sectors_router)
 app.include_router(roster_router)
 app.include_router(people_router)
+app.include_router(teams_router)
 
 # A route that asks missiondb for a database session (get_session) is handed one on the open
 # mission in its place. The probability map routes ask this way, and so need no change.
