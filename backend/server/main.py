@@ -12,6 +12,7 @@ from mission.open_mission import mission_session, reopen_last_mission
 from mission.routes import router as mission_router
 from missiondb import get_session
 from people.roster_routes import router as roster_router
+from people.routes import router as people_router
 from search_area.routes import router as search_area_router
 from sectors.routes import router as sectors_router
 from settings.routes import router as settings_router
@@ -38,6 +39,7 @@ app.include_router(mission_router)
 app.include_router(search_area_router)
 app.include_router(sectors_router)
 app.include_router(roster_router)
+app.include_router(people_router)
 
 # A route that asks missiondb for a database session (get_session) is handed one on the open
 # mission in its place. The probability map routes ask this way, and so need no change.
