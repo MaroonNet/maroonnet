@@ -70,7 +70,8 @@ test("opening a mission puts its sectors on the board", async () => {
     render(<Screen open={mission('az07')} />)
 
     await waitFor(() => expect(names()).toBe('S1 S4 S7'))
-    expect(board.loadedFor).toBe('az07')
+    // board is set by an effect, which can run just after the names reach the page.
+    await waitFor(() => expect(board.loadedFor).toBe('az07'))
 })
 
 test('with no mission open the board holds no sectors and asks for none', () => {

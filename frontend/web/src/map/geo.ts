@@ -62,6 +62,22 @@ export function polygonArea(corners: Position[]): number {
     return Math.abs(sum) * EARTH_RADIUS ** 2 / 2
 }
 
+// The middle of a shape's ground (its centroid), where its label goes. Each side, with the
+// first corner, makes a triangle; the middles of the triangles are averaged, each counting
+// by its area. Degrees are treated as a flat grid, which is close enough at a sector's size.
+export function polygonCenter(corners: Position[]): Position {
+    const first = corners[0]
+    let area = 0, lat = 0, lon = 0
+    for (let i = 1; i < corners.length - 1; i++) {
+        const b = corners[i], c = corners[i + 1]
+        const piece = ((b.lat - first.lat) * (c.lon - first.lon) - (b.lon - first.lon) * (c.lat - first.lat)) / 2
+        area += piece
+        lat += piece * (first.lat + b.lat + c.lat) / 3
+        lon += piece * (first.lon + b.lon + c.lon) / 3
+    }
+    return area === 0 ? first : { lat: lat / area, lon: lon / area }
+}
+
 // The place itself when it is inside the rectangle or on its line, and otherwise the nearest
 // place on the line.
 export function onOrInside(place: Position, box: Bounds): Position {

@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { bearingDegrees, distanceMeters, insideBounds, onOrInside, polygonArea, rectangleSize } from './geo.ts'
+import { bearingDegrees, distanceMeters, insideBounds, onOrInside, polygonArea, polygonCenter, rectangleSize } from './geo.ts'
 import { formatBearing, formatLatitude, formatLongitude, formatPosition } from './position.ts'
 
 test('one degree of latitude is 111.2 km', () => {
@@ -48,6 +48,17 @@ test("Arizona07's S7 is 0.55 square kilometers", () => {
     // Worked out separately by laying the corners on a flat grid of meters: 0.553 km². A
     // shape this small is the same on the curved earth to well under a percent.
     expect(polygonArea(s7.map(([lat, lon]) => ({ lat, lon }))) / 1_000_000).toBeCloseTo(0.553, 2)
+})
+
+test("a shape's center is the middle of its ground, not the average of its corners", () => {
+    const square = [{ lat: 31.5, lon: -110.7 }, { lat: 31.52, lon: -110.7 }, { lat: 31.52, lon: -110.68 }, { lat: 31.5, lon: -110.68 }]
+    const center = polygonCenter(square)
+    expect(center.lat).toBeCloseTo(31.51, 9)
+    expect(center.lon).toBeCloseTo(-110.69, 9)
+    // An extra corner in the middle of the top side adds no ground, so the center stays.
+    const withExtra = polygonCenter([square[0], square[1], { lat: 31.52, lon: -110.69 }, square[2], square[3]])
+    expect(withExtra.lat).toBeCloseTo(31.51, 9)
+    expect(withExtra.lon).toBeCloseTo(-110.69, 9)
 })
 
 test('a point past the search area line is put on the line, at the nearest spot', () => {

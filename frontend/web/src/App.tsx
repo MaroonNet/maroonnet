@@ -17,6 +17,8 @@ import SearchAreaOutline from './searchArea/SearchAreaOutline.tsx'
 import { useMapOverSearchArea, useSearchArea } from './searchArea/searchArea.ts'
 import type { SectorShape } from './map/drawSector.ts'
 import DrawSector from './sectors/DrawSector.tsx'
+import SectorCard from './sectors/SectorCard.tsx'
+import SectorsPanel from './sectors/SectorsPanel.tsx'
 import SectorsOnMap from './sectors/SectorsOnMap.tsx'
 import SettingsPanel from './settings/SettingsPanel.tsx'
 
@@ -55,6 +57,11 @@ function App() {
   const greyed = greyedTools(mission !== null, area !== null)
   if (greyed?.[tool]) setTool('select')
 
+  // The selected sector, picked on the map or in the Sectors panel. Its card shows while no
+  // drawing tool has a card of its own up.
+  const [selectedSector, setSelectedSector] = useState<number | null>(null)
+  const drawing = tool === 'sector' || tool === 'search-area'
+
   // Pressing the open panel's button closes it; pressing another opens that one in its place.
   function pressRailButton(id: PanelId) {
     setOpenPanel(openPanel === id ? null : id)
@@ -68,6 +75,11 @@ function App() {
       {openPanel === 'mission' && (
         <Panel title="Mission" onClose={() => setOpenPanel(null)}>
           <MissionPanel />
+        </Panel>
+      )}
+      {openPanel === 'sectors' && (
+        <Panel title="Sectors" onClose={() => setOpenPanel(null)}>
+          <SectorsPanel selected={selectedSector} onPick={setSelectedSector} />
         </Panel>
       )}
       {openPanel === 'area' && (
@@ -99,7 +111,7 @@ function App() {
       <main className="relative z-0 min-w-0 flex-1">
         <MissionMap hidden={hidden} pickedUses={pickedUses}>
           <SearchAreaOutline />
-          <SectorsOnMap />
+          <SectorsOnMap selected={selectedSector} onPick={tool === 'select' ? setSelectedSector : undefined} />
           {tool === 'measure' && <MeasureTool hintSlot={hintSlot} />}
         </MissionMap>
         {/* What floats over the map's top left corner. It moves right when a panel opens,
@@ -112,6 +124,7 @@ function App() {
           <div ref={setHintSlot} />
         </div>
         {tool === 'search-area' && <DrawSearchArea hintSlot={hintSlot} onDone={() => setTool('select')} />}
+        {selectedSector !== null && !drawing && <SectorCard id={selectedSector} onClose={() => setSelectedSector(null)} />}
         {/* key: picking the other shape starts the tool afresh. */}
         {tool === 'sector' && (
           <DrawSector key={sectorShape} shape={sectorShape} hintSlot={hintSlot} toolSlot={toolSlot} onDone={() => setTool('select')} />

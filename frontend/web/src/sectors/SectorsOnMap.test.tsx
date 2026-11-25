@@ -12,15 +12,23 @@ vi.mock('react-map-gl/maplibre', () => ({
     ),
 }))
 
-// A pretend map that records the pictures it was given and the events listened for.
+// A pretend map that records the pictures it was given and the events listened for. A
+// listener for one layer is kept under "click sectors-hit".
+type Listener = (event: { id: string, features?: { properties: { id: number } }[] }) => void
 const pretend = vi.hoisted(() => ({
     map: {
         images: new Set<string>(),
         hasImage(name: string) { return this.images.has(name) },
         addImage: (() => {}) as (name: string, image: unknown, options: unknown) => void,
-        listeners: {} as Record<string, (event: { id: string }) => void>,
-        on(type: string, listener: (event: { id: string }) => void) { this.listeners[type] = listener },
-        off(type: string) { delete this.listeners[type] },
+        listeners: {} as Record<string, Listener>,
+        on(type: string, layerOrListener: string | Listener, listener?: Listener) {
+            if (typeof layerOrListener === 'string') this.listeners[`${type} ${layerOrListener}`] = listener!
+            else this.listeners[type] = layerOrListener
+        },
+        off(type: string, layerOrListener: string | Listener) {
+            delete this.listeners[typeof layerOrListener === 'string' ? `${type} ${layerOrListener}` : type]
+        },
+        getCanvas: () => ({ style: { cursor: '' } }),
     },
 }))
 vi.mock('../map/missionMap.ts', () => ({ useMissionMap: () => pretend.map }))
@@ -39,21 +47,24 @@ function sector(id: number, status: Sector['status'], group_id: number | null = 
     }
 }
 
-function draw(sectors: Sector[]) {
+function draw(sectors: Sector[], selected: number | null = null, onPick?: (id: number) => void) {
     const addImage = vi.fn((name: string) => { pretend.map.images.add(name) })
     pretend.map.addImage = addImage
     render(
         <SectorsContext value={{ sectors, loadedFor: 'az07', add: async () => '' }}>
-            <SectorsOnMap />
+            <SectorsOnMap selected={selected} onPick={onPick} />
         </SectorsContext>,
     )
     const shapes = JSON.parse(screen.getByTestId('source').firstChild!.textContent!)
     return { shapes, addImage }
 }
 
+type Shape = { properties: { look: string }, geometry: { type: string, coordinates: unknown } }
+const polygons = (shapes: { features: Shape[] }) => shapes.features.filter((f) => f.geometry.type === 'Polygon')
+
 test("each sector is drawn with its status's look: green completed, striped partial, red drawn", () => {
     const { shapes } = draw([sector(1, 'completed'), sector(4, 'partial'), sector(7, 'drawn')])
-    expect(shapes.features.map((f: { properties: object }) => f.properties)).toEqual([
+    expect(polygons(shapes).map((f) => f.properties)).toEqual([
         { id: 1, name: 'S1', look: 'completed' },
         { id: 4, name: 'S4', look: 'partial' },
         { id: 7, name: 'S7', look: 'drawn' },
@@ -62,12 +73,20 @@ test("each sector is drawn with its status's look: green completed, striped part
 
 test('until assigning is built (D7), an assigned or searching sector has the drawn look', () => {
     const { shapes } = draw([sector(2, 'drawn', 3), sector(3, 'searching', 1)])
-    expect(shapes.features.map((f: { properties: { look: string } }) => f.properties.look)).toEqual(['drawn', 'drawn'])
+    expect(polygons(shapes).map((f) => f.properties.look)).toEqual(['drawn', 'drawn'])
+})
+
+test("each sector has one label point, at the middle of its ground, so a sector cut by the map's tiles is labeled once", () => {
+    const { shapes } = draw([sector(7, 'drawn')])
+    const points = shapes.features.filter((f: Shape) => f.geometry.type === 'Point')
+    expect(points).toHaveLength(1)
+    expect(points[0].properties).toEqual({ id: 7, name: 'S7', look: 'drawn' })
+    expect(layer('sectors-label')).toContain('["==",["geometry-type"],"Point"]')
 })
 
 test('a sector is drawn round its corners and back to the first, longitude first', () => {
     const { shapes } = draw([sector(7, 'drawn')])
-    expect(shapes.features[0].geometry).toEqual({
+    expect(polygons(shapes)[0].geometry).toEqual({
         type: 'Polygon',
         coordinates: [[[-110.7, 31.5], [-110.7, 31.51], [-110.69, 31.51], [-110.7, 31.5]]],
     })
@@ -83,6 +102,33 @@ test('the outline is red, orange or green by look, and the stripes fill only par
     const stripes = layers.find((text) => text.startsWith('sectors-stripes'))!
     expect(stripes).toContain(`"fill-pattern":"${STRIPES}"`)
     expect(stripes).toContain('"partial"')
+})
+
+const layer = (id: string) => screen.getAllByTestId('layer').map((l) => l.textContent!).find((text) => text.startsWith(`${id} `))!
+
+test('each sector is labeled with its name, in its look\'s color', () => {
+    draw([sector(7, 'drawn')])
+    const labels = layer('sectors-label')
+    expect(labels).toContain('#c9302d')
+})
+
+test('the selected sector is drawn with a stronger outline', () => {
+    draw([sector(1, 'completed'), sector(7, 'drawn')], 7)
+    expect(layer('sectors-line')).toContain('["==",["get","id"],7]')
+})
+
+test('while picking is on, a click on a sector picks it', () => {
+    const onPick = vi.fn()
+    draw([sector(7, 'drawn')], null, onPick)
+
+    pretend.map.listeners['click sectors-hit']({ id: '', features: [{ properties: { id: 7 } }] })
+
+    expect(onPick).toHaveBeenCalledWith(7)
+})
+
+test('while a drawing tool is in use, a click on a sector picks nothing', () => {
+    draw([sector(7, 'drawn')])
+    expect(pretend.map.listeners['click sectors-hit']).toBeUndefined()
 })
 
 test('the stripe picture is given to the map, and given again when the map asks for it', () => {
