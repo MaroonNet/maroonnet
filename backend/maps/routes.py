@@ -2,11 +2,15 @@
 
 import pathlib
 import re
+from datetime import date
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Path, Request, Response
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
-from .installed import packs_to_ask
+from .installed import installed, packs_to_ask
+from .pack_info import Box
 from .style import build_style
 
 router = APIRouter()
@@ -71,6 +75,28 @@ def terrain_max_zoom() -> int:
 def style(request: Request):
     # The address this request came to, so the style points back at the same server.
     return build_style(str(request.base_url).rstrip("/"), terrain_max_zoom())
+
+
+class InstalledPackFacts(BaseModel):
+    """One installed pack, as the list answers it: its id and what its pack.json says."""
+    id: str  # its folder's place in the maps folder, such as "state/CO/terrain"
+    kind: Literal["state", "mission"]
+    contents: Literal["basemap", "terrain"]
+    name: str
+    area: list[Box]  # the ground it covers: [west, south, east, north] boxes, in degrees
+    min_zoom: int
+    max_zoom: int
+    data_date: date | None  # how old the map data is; None when unknown
+    downloaded: date
+    bytes: int
+    status: Literal["complete", "partial"]
+
+
+@router.get("/api/maps/packs")
+def list_packs() -> list[InstalledPackFacts]:
+    """The installed packs, in id order. A partial pack is listed too; it serves no tiles."""
+    return [InstalledPackFacts(id=pack_id, **entry.info.model_dump(exclude={"format", "file", "source_urls"}))
+            for pack_id, entry in installed.items()]
 
 
 @router.get("/maps/fonts/{name}")
