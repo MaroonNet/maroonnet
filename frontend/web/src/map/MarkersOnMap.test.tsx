@@ -142,9 +142,10 @@ test('waypoints on the same spot share one label that counts them, so their name
 
 test('zooming out brings more waypoints onto one spot, and the labels follow', () => {
     draw({ waypoints: ARIZONA07 })
-    // A tenth of the scale: the command post and the start point, 140 m apart, now touch.
+    // A tenth of the scale: the command post, the start point and LZ 1 are now within 50 px
+    // of each other. The boot prints are still 160 px from the finds.
     act(() => pretend.zoomTo(10_000))
-    expect(labels()).toEqual(['', '2 waypoints', 'LZ 1', 'Boot prints', '', '2 waypoints'])
+    expect(labels()).toEqual(['', '', '3 waypoints', 'Boot prints', '', '2 waypoints'])
 })
 
 test('while another tool is in use a marker takes no clicks, so they reach the map', () => {
