@@ -11,10 +11,10 @@ export const LABEL_DISTANCE = 75
 // that spot. Often one thing; several when they sit on the same spot.
 export type Stack = { teams: number[], waypoints: number[] }
 
-// How a stack of several is counted: "6 teams · 2 waypoints", "2 waypoints", "1 team · 1 waypoint".
+// How a stack of several is counted: "6 Teams · 2 Waypoints", "2 Waypoints", "1 Team · 1 Waypoint".
 export function stackWords(teams: number, waypoints: number): string {
     const count = (many: number, word: string) => many === 0 ? [] : [`${many} ${word}${many === 1 ? '' : 's'}`]
-    return [...count(teams, 'team'), ...count(waypoints, 'waypoint')].join(' · ')
+    return [...count(teams, 'Team'), ...count(waypoints, 'Waypoint')].join(' · ')
 }
 
 // Markers sorted into stacks: markers whose places are less than distance apart on screen.

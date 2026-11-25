@@ -26,7 +26,7 @@ const rows = () => screen.getAllByRole('button').filter((button) => button.getAt
 
 test('with two waypoints on one spot the card asks which, and a row picks that one', () => {
     const on = show({ teams: [], waypoints: [5, 6] })
-    expect(screen.getByRole('heading', { name: '2 waypoints here' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: '2 Waypoints here' })).toBeTruthy()
     expect(rows().map((row) => row.textContent)).toEqual(['Helicopter sightingFind', 'Subject foundFind'])
     fireEvent.click(rows()[0])
     expect(on.waypoint).toHaveBeenCalledWith(5)
@@ -34,7 +34,7 @@ test('with two waypoints on one spot the card asks which, and a row picks that o
 
 test("with teams on one spot the card lists each with its group's dot and its group, and a row picks that team", () => {
     const on = show({ teams: [1, 2, 7], waypoints: [] })
-    expect(screen.getByRole('heading', { name: '3 teams here' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: '3 Teams here' })).toBeTruthy()
     expect(rows().map((row) => row.textContent)).toEqual(['Radio 1Group 1', 'Radio 2Group 1', 'Radio 7Group 2'])
     expect(rows()[2].firstElementChild!.className).toContain('size-3.5')
     fireEvent.click(rows()[2])
@@ -43,7 +43,7 @@ test("with teams on one spot the card lists each with its group's dot and its gr
 
 test('teams and waypoints on one spot are listed together, teams first', () => {
     const on = show({ teams: [1, 7], waypoints: [1] })
-    expect(screen.getByRole('heading', { name: '2 teams · 1 waypoint here' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: '2 Teams · 1 Waypoint here' })).toBeTruthy()
     expect(rows().map((row) => row.textContent)).toEqual(['Radio 1Group 1', 'Radio 7Group 2', 'Command postCommand post'])
     fireEvent.click(rows()[2])
     expect(on.waypoint).toHaveBeenCalledWith(1)
@@ -52,7 +52,7 @@ test('teams and waypoints on one spot are listed together, teams first', () => {
 
 test('what is no longer there is left off the list and out of the count', () => {
     show({ teams: [1, 5], waypoints: [1, 99] })  // radio 5 has nobody on it; waypoint 99 was deleted
-    expect(screen.getByRole('heading', { name: '1 team · 1 waypoint here' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: '1 Team · 1 Waypoint here' })).toBeTruthy()
     expect(rows()).toHaveLength(2)
 })
 

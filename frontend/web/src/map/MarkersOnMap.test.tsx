@@ -137,7 +137,7 @@ test('a click where two waypoints sit on the same spot picks both', () => {
 
 test('waypoints on the same spot share one label that counts them, so their names do not print over each other', () => {
     draw({ waypoints: ARIZONA07 })
-    expect(labels()).toEqual(['Command post', 'Start point', 'LZ 1', 'Boot prints', '', '2 waypoints'])
+    expect(labels()).toEqual(['Command post', 'Start point', 'LZ 1', 'Boot prints', '', '2 Waypoints'])
 })
 
 test('zooming out brings more waypoints onto one spot, and the labels follow', () => {
@@ -146,7 +146,7 @@ test('zooming out brings more waypoints onto one spot, and the labels follow', (
     // stack. LZ 1 and the boot prints are clicked on their own but are within 75 px of it, so
     // they show no names. The finds are still 160 px from the boot prints.
     act(() => pretend.zoomTo(10_000))
-    expect(labels()).toEqual(['', '2 waypoints', '', '', '', '2 waypoints'])
+    expect(labels()).toEqual(['', '2 Waypoints', '', '', '', '2 Waypoints'])
 })
 
 test('while another tool is in use a marker takes no clicks, so they reach the map', () => {
@@ -196,7 +196,7 @@ test('a click on a lone team picks it, and the click does not reach the map unde
 test('teams on the same spot share one label that counts them, in place of their pills, and a click picks them all', () => {
     const onPick = vi.fn()
     const markers = draw({ radios: RADIOS, onPick })  // all three at the same place
-    expect(labels()).toEqual(['', '', '3 teams'])
+    expect(labels()).toEqual(['', '', '3 Teams'])
     expect(screen.queryByText('G2')).toBeNull()
     fireEvent.click(markers[2])
     expect(onPick).toHaveBeenCalledWith({ teams: [1, 2, 7], waypoints: [] })
@@ -206,14 +206,14 @@ test('teams and waypoints on the same spot are one stack, and a click picks them
     const onPick = vi.fn()
     // The sample's teams are about 5 m from the command post.
     const markers = draw({ waypoints: ARIZONA07.slice(0, 1), radios: RADIOS, onPick })
-    expect(labels()).toEqual(['', '', '', '3 teams · 1 waypoint'])
+    expect(labels()).toEqual(['', '', '', '3 Teams · 1 Waypoint'])
     fireEvent.click(markers[0])
     expect(onPick).toHaveBeenCalledWith({ teams: [1, 2, 7], waypoints: [1] })
 })
 
 test('one team on one waypoint is counted in the singular', () => {
     draw({ waypoints: ARIZONA07.slice(0, 1), radios: RADIOS.slice(0, 1) })
-    expect(labels()).toEqual(['', '1 team · 1 waypoint'])
+    expect(labels()).toEqual(['', '1 Team · 1 Waypoint'])
 })
 
 // On the pretend map a ten-thousandth of a degree is 10 px.
@@ -231,7 +231,7 @@ test('teams 40 px apart are each clicked on their own, and show neither a count 
 test('teams less than 25 px apart are one stack: one click picks both, and the top one carries their count', () => {
     const onPick = vi.fn()
     const markers = draw({ radios: [team(1, 1, 31.4, -110.6), team(2, 1, 31.4, -110.5998)], onPick })  // 20 px
-    expect(labels()).toEqual(['', '2 teams'])
+    expect(labels()).toEqual(['', '2 Teams'])
     fireEvent.click(markers[0])
     expect(onPick).toHaveBeenLastCalledWith({ teams: [1, 2], waypoints: [] })
 })
@@ -239,7 +239,7 @@ test('teams less than 25 px apart are one stack: one click picks both, and the t
 test('a stack keeps its count among other markers, and a team clicked on its own beside it shows nothing', () => {
     // Teams 1 and 2 are 20 px apart; team 3 is 50 px past team 2.
     draw({ radios: [team(1, 1, 31.4, -110.6), team(2, 1, 31.4, -110.5998), team(3, 2, 31.4, -110.5993)] })
-    expect(labels()).toEqual(['', '2 teams', ''])
+    expect(labels()).toEqual(['', '2 Teams', ''])
 })
 
 test('teams 75 px or more apart each show their own pill', () => {
@@ -261,7 +261,7 @@ test('with the Team positions layer unticked only the waypoints are drawn, and a
 
 test('with the Waypoints layer unticked only the teams are drawn', () => {
     draw({ waypoints: ARIZONA07, radios: RADIOS, waypointsLayer: HIDDEN })
-    expect(labels()).toEqual(['', '', '3 teams'])
+    expect(labels()).toEqual(['', '', '3 Teams'])
 })
 
 test("each marker is as strong as its own layer's opacity", () => {
