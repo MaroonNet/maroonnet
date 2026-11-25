@@ -25,9 +25,9 @@ type Props = {
 // One thing with a marker: a waypoint at its place, or a team at its newest position.
 type Placed = { lat: number, lon: number, waypoint?: Waypoint, team?: Radio }
 
-// The markers on the map. A waypoint is its kind's marker, centered on its place, with its
-// name to the right. A team is a circle in its group's color at its radio's newest
-// position, with its short name inside. Markers on the same spot of the screen, of either
+// The markers on the map. A waypoint is its kind's pin, its point on its place, with its
+// name to the right of its head. A team is a circle in its group's color, centered on its
+// radio's newest position, with its short name inside. Markers on the same spot of the screen, of either
 // sort, are one stack: one label counts them, and a click picks them all, so a card can ask
 // which is meant. It is drawn inside the map (a child of MissionMap). The markers are page
 // elements laid over the map, so they sit above the sectors and the tracks. A sort unticked
@@ -72,7 +72,7 @@ function MarkersOnMap({ selectedTeam, selectedWaypoint, onPick, hidden = null, t
                     key={waypoint ? `waypoint-${waypoint.id}` : `team-${team!.id}`}
                     longitude={one.lon}
                     latitude={one.lat}
-                    anchor="center"
+                    anchor={waypoint ? 'bottom' : 'center'}
                     // While another tool is in use a click goes through the marker to the map.
                     style={{ pointerEvents: onPick ? 'auto' : 'none', cursor: onPick ? 'pointer' : '' }}
                     onClick={(event) => {
@@ -81,17 +81,18 @@ function MarkersOnMap({ selectedTeam, selectedWaypoint, onPick, hidden = null, t
                         onPick(picked)
                     }}
                 >
-                    {/* The marker is as big as its circle, so the circle sits on the place; the
-                        label hangs off its right side. */}
+                    {/* The marker is as big as its pin or circle, so a pin's point or a circle's
+                        middle is on the place. The label hangs off its right side, level with
+                        the middle of a pin's head (12 px down) or a circle's middle. */}
                     <div
                         title={waypoint ? `${waypoint.name} · ${kindOf(waypoint.kind).label}` : `${radioLabel(team!.id)} · ${groupLabel(team!.group_id)}`}
                         aria-current={ringed ? 'true' : undefined}
                         style={{ opacity: (waypoint ? waypointsLayer : teamsLayer).opacity }}
                         className="relative flex"
                     >
-                        {waypoint ? <KindMarker kind={waypoint.kind} ringed={ringed} /> : <TeamMarker radio={team!} ringed={ringed} />}
+                        {waypoint ? <KindMarker kind={waypoint.kind} pin ringed={ringed} /> : <TeamMarker radio={team!} ringed={ringed} />}
                         {label && (
-                            <span data-label className="absolute top-1/2 left-full ml-1.5 -translate-y-1/2 font-sans text-body font-bold whitespace-nowrap text-ink [text-shadow:0_0_2px_#fff,0_0_2px_#fff,0_0_3px_#fff,0_0_3px_#fff]">
+                            <span data-label className={`absolute ${waypoint ? 'top-3' : 'top-1/2'} left-full ml-1.5 -translate-y-1/2 font-sans text-body font-bold whitespace-nowrap text-ink [text-shadow:0_0_2px_#fff,0_0_2px_#fff,0_0_3px_#fff,0_0_3px_#fff]`}>
                                 {label}
                             </span>
                         )}

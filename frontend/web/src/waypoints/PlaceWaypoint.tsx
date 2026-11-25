@@ -97,7 +97,7 @@ function PlaceWaypoint({ hintSlot, editing, onDone }: Props) {
             {/* Portals draw these in other parts of the page: the hint line under the
                 toolbar, and the pin's picture in the pin on the map. */}
             {hintSlot && createPortal(<HintLine text={position ? MOVE_HINT : DROP_HINT} />, hintSlot)}
-            {createPortal(<KindMarker kind={kind} ringed />, pinElement)}
+            {createPortal(<KindMarker kind={kind} pin ringed />, pinElement)}
             {position && (
                 <Card title={editing ? 'Edit Waypoint' : 'New Waypoint'}>
                     <p className="font-mono text-figure">{formatPosition(position)}</p>

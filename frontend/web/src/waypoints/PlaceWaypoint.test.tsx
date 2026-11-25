@@ -11,12 +11,14 @@ import { WaypointsContext, type Placing, type Waypoint, type WaypointsBoard } fr
 const pin = vi.hoisted(() => ({
     on: null as unknown as { move: (position: Position) => void },
     start: undefined as Position | undefined,
+    element: null as unknown as HTMLElement,  // what the pin looks like
     clear: vi.fn(),
     stop: vi.fn(),
     map: {},
 }))
 vi.mock('../map/dropPin.ts', () => ({
-    dropPin: (_map: unknown, _element: unknown, on: typeof pin.on, start?: Position) => {
+    dropPin: (_map: unknown, element: HTMLElement, on: typeof pin.on, start?: Position) => {
+        pin.element = element
         pin.on = on
         pin.start = start
         return { clear: pin.clear, stop: pin.stop }
@@ -67,6 +69,15 @@ test('a click on the map opens the New Waypoint card at that place, as Other, al
     expect(kind().value).toBe('other')
     expect(box('Name').value).toBe('Other 1')
     expect(screen.getByRole('status').textContent).toBe('Drag the pin or click the map to move it. Then Save the waypoint.')
+})
+
+test('the pin on the map is the kind\'s pin, ringed, as the waypoint will look on the map', () => {
+    drawTool()
+    click(SPOT)
+    fireEvent.change(kind(), { target: { value: 'find' } })
+    expect(pin.element.querySelector('[data-outline]')).toBeTruthy()
+    expect(pin.element.querySelector('.tabler-icon-user-check')).toBeTruthy()
+    expect(pin.element.querySelector('.outline-ink')).toBeTruthy()
 })
 
 test('the name follows the kind until something is typed in it', () => {

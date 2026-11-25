@@ -13,9 +13,10 @@ type Listeners = {
 
 // Lets the user place one pin: a click on the map puts it there, a click elsewhere moves
 // it, and it can be dragged. element is what the pin looks like; the caller draws into it.
+// The pin hangs from its bottom, so the tip of its point is the place.
 // start: where the pin already is, when a saved waypoint is being moved.
 export function dropPin(map: MapLibreMap, element: HTMLElement, on: Listeners, start?: Position): Pin {
-    const marker = new Marker({ element, draggable: true, anchor: 'center' })
+    const marker = new Marker({ element, draggable: true, anchor: 'bottom' })
     const place = (position: Position) => marker.setLngLat([position.lon, position.lat]).addTo(map)
     const report = () => {
         const { lat, lng } = marker.getLngLat()
@@ -27,7 +28,7 @@ export function dropPin(map: MapLibreMap, element: HTMLElement, on: Listeners, s
     }
 
     // A click on the pin itself is not a click on the map, which would move the pin's
-    // middle to the pointer.
+    // point to the pointer.
     const keepFromMap = (event: MouseEvent) => event.stopPropagation()
 
     if (start) place(start)

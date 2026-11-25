@@ -11,15 +11,16 @@ import { WaypointsContext, type Waypoint } from '../waypoints/waypoints.ts'
 import MarkersOnMap from './MarkersOnMap.tsx'
 import type { Stack } from './stacks.ts'
 
-// The map library's marker, as a box at its place. A press on it reaches the component as
-// the library's own click does.
-type MarkerProps = { longitude: number, latitude: number, style?: CSSProperties, onClick?: (event: unknown) => void, children: ReactNode }
+// The map library's marker, as a box at its place, noting which point of it is on the place.
+// A press on it reaches the component as the library's own click does.
+type MarkerProps = { longitude: number, latitude: number, anchor?: string, style?: CSSProperties, onClick?: (event: unknown) => void, children: ReactNode }
 const stopped = vi.hoisted(() => ({ count: 0 }))
 vi.mock('react-map-gl/maplibre', () => ({
-    Marker: ({ longitude, latitude, style, onClick, children }: MarkerProps) => (
+    Marker: ({ longitude, latitude, anchor, style, onClick, children }: MarkerProps) => (
         <div
             data-testid="marker"
             data-place={`${latitude},${longitude}`}
+            data-anchor={anchor}
             style={style}
             onClick={() => onClick?.({ originalEvent: { stopPropagation() { stopped.count += 1 } } })}
         >
@@ -109,7 +110,14 @@ test('each waypoint is a marker at its place, with its name beside its kind\'s i
     expect(markers.map(label)).toEqual(['Command post', 'Start point', 'LZ 1', 'Boot prints', 'Helicopter sighting'])
     expect(markers[3].dataset.place).toBe('31.5071259,-110.6693262')
     expect(within(markers[3]).getByTitle('Boot prints · Evidence')).toBeTruthy()
-    expect(markers[3].querySelector('svg')).toBeTruthy()
+    expect(markers[3].querySelector('.tabler-icon-zoom-exclamation')).toBeTruthy()
+})
+
+test("a waypoint is a pin with its point on its place; a team's circle is centered on its place", () => {
+    const markers = draw({ waypoints: ARIZONA07.slice(3, 4), radios: [team(1, 1)] })
+    expect(markers.map((marker) => marker.dataset.anchor)).toEqual(['bottom', 'center'])
+    expect(markers[0].querySelector('[data-outline]')).toBeTruthy()
+    expect(markers[1].querySelector('[data-outline]')).toBeNull()
 })
 
 test('a click on a lone waypoint picks it, and the click does not reach the map under it', () => {

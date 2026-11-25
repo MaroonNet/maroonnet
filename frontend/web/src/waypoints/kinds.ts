@@ -3,8 +3,8 @@ import {
     IconUserCheck, IconUsers, IconZoomExclamation, type Icon,
 } from '@tabler/icons-react'
 
-// The kinds of waypoint, and how each looks: a filled circle in the kind's color with its
-// icon inside. Two pairs share a color and differ by icon.
+// The kinds of waypoint, and how each looks: a marker in the kind's color with its icon
+// inside (KindMarker draws it). Two pairs share a color and differ by icon.
 export type Kind = {
     code: string        // the database's word for it (waypoint_type.type_code)
     label: string       // its name on screen
