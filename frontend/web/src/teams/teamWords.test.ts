@@ -4,11 +4,16 @@ import { carriedBy, freePeople, freeRadios, GROUP_COLORS, groupColor, groupLine,
 
 const radio = (id: number) => RADIOS.find((r) => r.id === id)!
 
-test('there are eight group colors, used in order and again after the eighth', () => {
-    expect(new Set(GROUP_COLORS).size).toBe(8)
+test('there are seven group colors, used in order and again after the seventh', () => {
+    expect(new Set(GROUP_COLORS).size).toBe(7)
     expect(groupColor(1)).toBe(GROUP_COLORS[0])
-    expect(groupColor(8)).toBe(GROUP_COLORS[7])
-    expect(groupColor(9)).toBe(GROUP_COLORS[0])
+    expect(groupColor(7)).toBe(GROUP_COLORS[6])
+    expect(groupColor(8)).toBe(GROUP_COLORS[0])
+})
+
+test('each group color is written as the map reads a color, and none is a sector status color', () => {
+    for (const color of GROUP_COLORS) expect(color).toMatch(/^#[0-9a-f]{6}$/)
+    for (const taken of ['#c9302d', '#e57600', '#218a45']) expect(GROUP_COLORS).not.toContain(taken)
 })
 
 test('a team is a searcher radio with someone on it', () => {

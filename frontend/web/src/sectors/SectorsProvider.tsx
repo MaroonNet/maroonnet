@@ -2,7 +2,10 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { sendError } from '../diagnostics/errorLog.ts'
 import type { Position } from '../map/geo.ts'
 import { useMission } from '../mission/mission.ts'
-import { addSector, changeSectorShape, deleteSector, loadSectors, SectorsContext, type Sector } from './sectors.ts'
+import {
+    addSector, assignSector, changeSectorShape, completeSector, deleteSector, loadSectors, markSectorEntered,
+    releaseSector, SectorsContext, type Sector,
+} from './sectors.ts'
 
 // Sectors as they were read: the sectors, and what was open when they were read.
 type Read = { readFor: string, missionId: string, sectors: Sector[] }
@@ -51,12 +54,33 @@ function SectorsProvider({ children }: { children: ReactNode }) {
     const remove = (id: number) => saveThen(() => deleteSector(id),
         (sectors) => sectors.filter((sector) => sector.id !== id))
 
+    // Sends a change to a sector's life, then reads every sector again: giving a sector to
+    // a group can also release the one that group held.
+    async function sendThenRead(send: () => Promise<unknown>): Promise<string> {
+        if (!missionId || !readFor) return 'No mission is open.'
+        try {
+            await send()
+            const sectors = await loadSectors()
+            setRead({ readFor, missionId, sectors })
+            return ''
+        } catch (error) {
+            return error instanceof Error ? error.message : String(error)
+        }
+    }
+    const assign = (id: number, groupId: number) => sendThenRead(() => assignSector(id, groupId))
+    const release = (id: number) => sendThenRead(() => releaseSector(id))
+    const markEntered = (id: number, radioId: number) => sendThenRead(() => markSectorEntered(id, radioId))
+    const complete = (id: number) => sendThenRead(() => completeSector(id))
+
     // What was read for an earlier mission is not this mission's sectors. Sectors read
     // before the session or status changed are still this mission's, and are shown until
     // the new reading arrives.
     const current = read?.missionId === missionId ? read : null
     return (
-        <SectorsContext value={{ sectors: current?.sectors ?? [], loadedFor: current?.missionId ?? null, add, changeShape, remove }}>
+        <SectorsContext value={{
+            sectors: current?.sectors ?? [], loadedFor: current?.missionId ?? null,
+            add, changeShape, remove, assign, release, markEntered, complete,
+        }}>
             {children}
         </SectorsContext>
     )

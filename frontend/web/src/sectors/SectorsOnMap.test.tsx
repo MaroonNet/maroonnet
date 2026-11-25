@@ -1,6 +1,8 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { STRIPES, stripesImage } from './looks.ts'
+import { groupColor } from '../teams/teamWords.ts'
+import { NEVER_HELD, NO_LIFE } from './sample.ts'
 import { SectorsContext, type Sector } from './sectors.ts'
 import SectorsOnMap from './SectorsOnMap.tsx'
 
@@ -41,7 +43,7 @@ afterEach(() => {
 
 function sector(id: number, status: Sector['status'], group_id: number | null = null): Sector {
     return {
-        id, name: `S${id}`, status, group_id, can_edit: false,
+        id, name: `S${id}`, status, group_id, can_edit: false, ...NEVER_HELD,
         corners: [{ lat: 31.5, lon: -110.7 }, { lat: 31.51, lon: -110.7 }, { lat: 31.51, lon: -110.69 }],
         created_time: '2025-04-14T03:35:00Z', completed_time: null,
     }
@@ -51,7 +53,7 @@ function draw(sectors: Sector[], selected: number | null = null, onPick?: (id: n
     const addImage = vi.fn((name: string) => { pretend.map.images.add(name) })
     pretend.map.addImage = addImage
     render(
-        <SectorsContext value={{ sectors, loadedFor: 'az07', add: async () => '', changeShape: async () => '', remove: async () => '' }}>
+        <SectorsContext value={{ sectors, loadedFor: 'az07', add: async () => '', changeShape: async () => '', remove: async () => '', ...NO_LIFE }}>
             <SectorsOnMap selected={selected} onPick={onPick} hidden={hidden} />
         </SectorsContext>,
     )
@@ -65,22 +67,36 @@ const polygons = (shapes: { features: Shape[] }) => shapes.features.filter((f) =
 test("each sector is drawn with its status's look: green completed, striped partial, red drawn", () => {
     const { shapes } = draw([sector(1, 'completed'), sector(4, 'partial'), sector(7, 'drawn')])
     expect(polygons(shapes).map((f) => f.properties)).toEqual([
-        { id: 1, name: 'S1', look: 'completed' },
-        { id: 4, name: 'S4', look: 'partial' },
-        { id: 7, name: 'S7', look: 'drawn' },
+        { id: 1, name: 'S1', look: 'completed', color: '#218a45', label: 'S1' },
+        { id: 4, name: 'S4', look: 'partial', color: '#e57600', label: 'S4' },
+        { id: 7, name: 'S7', look: 'drawn', color: '#c9302d', label: 'S7' },
     ])
 })
 
-test('until assigning is built (D7), an assigned or searching sector has the drawn look', () => {
+test('an assigned sector is red and labeled with its group; a searching one is in its group\'s color', () => {
     const { shapes } = draw([sector(2, 'drawn', 3), sector(3, 'searching', 1)])
-    expect(polygons(shapes).map((f) => f.properties.look)).toEqual(['drawn', 'drawn'])
+    expect(polygons(shapes).map((f) => f.properties)).toEqual([
+        { id: 2, name: 'S2', look: 'assigned', color: '#c9302d', label: 'S2 → G3' },
+        { id: 3, name: 'S3', look: 'searching', color: groupColor(1), label: 'S3 → G1' },
+    ])
+})
+
+test('a partial sector given to a group again keeps its stripes, with the group in its label', () => {
+    const { shapes } = draw([sector(4, 'partial', 3)])
+    expect(polygons(shapes)[0].properties).toEqual({ id: 4, name: 'S4', look: 'partial', color: '#e57600', label: 'S4 → G3' })
+})
+
+test('completed and searching sectors have a light fill in their own color', () => {
+    draw([sector(3, 'searching', 1)])
+    expect(layer('sectors-fill')).toContain('["in",["get","look"],["literal",["completed","searching"]]]')
+    expect(layer('sectors-fill')).toContain('"fill-color":["get","color"]')
 })
 
 test("each sector has one label point, at the middle of its ground, so a sector cut by the map's tiles is labeled once", () => {
     const { shapes } = draw([sector(7, 'drawn')])
     const points = shapes.features.filter((f: Shape) => f.geometry.type === 'Point')
     expect(points).toHaveLength(1)
-    expect(points[0].properties).toEqual({ id: 7, name: 'S7', look: 'drawn' })
+    expect(points[0].properties).toEqual({ id: 7, name: 'S7', look: 'drawn', color: '#c9302d', label: 'S7' })
     expect(layer('sectors-label')).toContain('["==",["geometry-type"],"Point"]')
 })
 
@@ -97,13 +113,11 @@ test('a sector is drawn round its corners and back to the first, longitude first
     })
 })
 
-test('the outline is red, orange or green by look, and the stripes fill only partial sectors', () => {
+test("the outline is in each sector's own color, and the stripes fill only partial sectors", () => {
     draw([sector(4, 'partial')])
     const layers = screen.getAllByTestId('layer').map((layer) => layer.textContent!)
     const outline = layers.find((text) => text.startsWith('sectors-line'))!
-    expect(outline).toContain('#c9302d')  // red
-    expect(outline).toContain('#e57600')  // orange
-    expect(outline).toContain('#218a45')  // green
+    expect(outline).toContain('"line-color":["get","color"]')
     const stripes = layers.find((text) => text.startsWith('sectors-stripes'))!
     expect(stripes).toContain(`"fill-pattern":"${STRIPES}"`)
     expect(stripes).toContain('"partial"')
@@ -111,10 +125,9 @@ test('the outline is red, orange or green by look, and the stripes fill only par
 
 const layer = (id: string) => screen.getAllByTestId('layer').map((l) => l.textContent!).find((text) => text.startsWith(`${id} `))!
 
-test('each sector is labeled with its name, in its look\'s color', () => {
+test('each sector is labeled in its own color', () => {
     draw([sector(7, 'drawn')])
-    const labels = layer('sectors-label')
-    expect(labels).toContain('#c9302d')
+    expect(layer('sectors-label')).toContain('"text-color":["get","color"]')
 })
 
 test('the selected sector is drawn with a stronger outline', () => {

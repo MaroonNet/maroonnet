@@ -6,17 +6,18 @@ import type { Group, Radio, RadioKind } from './teams.ts'
 // The words and colors the Groups & Teams panel, the team card and the Mesh panel use, and
 // the readings of which radios are teams.
 
-// A group's color, by its number: eight, used in order and again after the eighth. The
-// first four are the mockup's; none is the red of an alert or the green of a completed sector.
+// A group's color, by its number: seven, used in order and again after the seventh. None
+// is the red of an alert, the green of a completed sector or the orange of a partial one,
+// since a sector being searched is drawn in its group's color. They are written as the map
+// library reads a color.
 export const GROUP_COLORS = [
-    'oklch(0.52 0.15 255)',  // blue
-    'oklch(0.52 0.15 315)',  // purple
-    'oklch(0.64 0.15 55)',   // orange
-    'oklch(0.56 0.1 200)',   // teal
-    'oklch(0.58 0.17 350)',  // pink
-    'oklch(0.55 0.11 110)',  // olive
-    'oklch(0.42 0.13 285)',  // indigo
-    'oklch(0.47 0.07 60)',   // brown
+    '#1f68bc',  // blue
+    '#8949a3',  // purple
+    '#c04688',  // pink
+    '#00868c',  // teal
+    '#76771a',  // olive
+    '#483e90',  // indigo
+    '#785130',  // brown
 ]
 export const groupColor = (groupId: number) => GROUP_COLORS[(groupId - 1) % GROUP_COLORS.length]
 

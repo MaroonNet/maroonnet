@@ -5,6 +5,7 @@ import type { Bounds, Position } from '../map/geo.ts'
 import { SearchAreaContext } from '../searchArea/searchArea.ts'
 import { SettingsContext } from '../settings/settings.ts'
 import EditSectorShape from './EditSectorShape.tsx'
+import { NEVER_HELD, NO_LIFE } from './sample.ts'
 import { SectorsContext, type Sector } from './sectors.ts'
 
 // The real drawing needs a real map. This stand-in keeps what the tool handed it, so a test
@@ -38,7 +39,7 @@ const S7_CORNERS: Position[] = [[31.510046, -110.679325], [31.513835, -110.67927
     .map(([lat, lon]) => ({ lat, lon }))
 const S7: Sector = {
     id: 7, name: 'S7', status: 'drawn', group_id: null, can_edit: true, corners: S7_CORNERS,
-    created_time: '2025-04-14T08:02:00Z', completed_time: null,
+    created_time: '2025-04-14T08:02:00Z', completed_time: null, ...NEVER_HELD,
 }
 
 function editTool(changeShape = vi.fn(async (_id: number, _corners: Position[]) => '')) {
@@ -48,7 +49,7 @@ function editTool(changeShape = vi.fn(async (_id: number, _corners: Position[]) 
         return (
             <SettingsContext value={{ settings: { units: 'metric' }, loadFailed: false, change: async () => false }}>
                 <SearchAreaContext value={{ area: ARIZONA07_AREA, loadedFor: 'az07', save: async () => '' }}>
-                    <SectorsContext value={{ sectors: [S7], loadedFor: 'az07', add: async () => '', changeShape, remove: async () => '' }}>
+                    <SectorsContext value={{ sectors: [S7], loadedFor: 'az07', add: async () => '', changeShape, remove: async () => '', ...NO_LIFE }}>
                         <div ref={setHintSlot} />
                         <EditSectorShape id={7} hintSlot={hintSlot} onClose={onClose} />
                     </SectorsContext>

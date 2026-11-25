@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, expect, test, vi } from 'vitest'
 import { MissionContext, type OpenMission } from '../mission/mission.ts'
 import { SettingsContext } from '../settings/settings.ts'
+import { held, NO_LIFE, sector } from './sample.ts'
 import SectorCard from './SectorCard.tsx'
 import { SectorsContext, type Sector } from './sectors.ts'
 import SectorsPanel from './SectorsPanel.tsx'
@@ -13,14 +14,6 @@ const ARIZONA07: OpenMission = {
     start_time: '2025-04-14T03:30:00Z', end_time: '2025-04-14T11:20:00Z', sessions: [], asks_to_continue: false,
 }
 
-const SQUARE = [{ lat: 31.5, lon: -110.7 }, { lat: 31.51, lon: -110.7 }, { lat: 31.51, lon: -110.69 }, { lat: 31.5, lon: -110.69 }]
-
-function sector(id: number, status: Sector['status'], extra: Partial<Sector> = {}): Sector {
-    return {
-        id, name: `S${id}`, status, group_id: null, can_edit: false, corners: SQUARE,
-        created_time: '2025-04-14T03:35:00Z', completed_time: status === 'completed' ? '2025-04-14T08:21:45Z' : null, ...extra,
-    }
-}
 
 // Arizona07's seven, as they ended (only S7 was never assigned).
 const ARIZONA07_SECTORS = [
@@ -33,7 +26,7 @@ function Boards({ children, mission = ARIZONA07, sectors = ARIZONA07_SECTORS, re
     return (
         <SettingsContext value={{ settings: { units: 'imperial' }, loadFailed: false, change: async () => false }}>
             <MissionContext value={{ mission, loadFailed: false, run: async () => '' }}>
-                <SectorsContext value={{ sectors, loadedFor: mission?.id ?? null, add: async () => '', changeShape: async () => '', remove }}>
+                <SectorsContext value={{ sectors, loadedFor: mission?.id ?? null, add: async () => '', changeShape: async () => '', remove, ...NO_LIFE }}>
                     {children}
                 </SectorsContext>
             </MissionContext>
@@ -49,6 +42,13 @@ test('the Sectors panel lists every sector with its status and a line about it',
     expect(rows.map((row) => row.textContent)).toEqual([
         'S1CompletedCompleted 1:21 am', 'S2CompletedCompleted 1:21 am', 'S3CompletedCompleted 1:21 am',
         'S4PartialSearched in part', 'S5CompletedCompleted 1:21 am', 'S6PartialSearched in part', 'S7DrawnUnassigned',
+    ])
+})
+
+test('a sector a group holds reads Assigned or Searching, with its group', () => {
+    render(<Boards sectors={[held(4, 'partial', 3), held(6, 'searching', 1)]}><SectorsPanel selected={null} onPick={() => {}} /></Boards>)
+    expect(screen.getAllByRole('button').map((row) => row.textContent)).toEqual([
+        'S4AssignedAssigned to Group 3', 'S6SearchingBeing searched by Group 1',
     ])
 })
 

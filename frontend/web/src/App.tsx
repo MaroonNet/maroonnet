@@ -165,7 +165,7 @@ function App() {
         {editingSector !== null ? (
           <EditSectorShape id={editingSector} hintSlot={hintSlot} onClose={() => setEditingSector(null)} />
         ) : selectedSector !== null && !drawing && (
-          <SectorCard id={selectedSector} onClose={() => setSelectedSector(null)} onEdit={setEditingSector} />
+          <SectorCard key={selectedSector} id={selectedSector} onClose={() => setSelectedSector(null)} onEdit={setEditingSector} />
         )}
         {selectedTeam !== null && editingSector === null && !drawing && (
           <TeamCard id={selectedTeam} onClose={() => setSelectedTeam(null)} />

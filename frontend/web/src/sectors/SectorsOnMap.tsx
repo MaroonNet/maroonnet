@@ -4,12 +4,11 @@ import { useEffect } from 'react'
 import { Layer, Source } from 'react-map-gl/maplibre'
 import { polygonCenter } from '../map/geo.ts'
 import { useMissionMap } from '../map/missionMap.ts'
-import { lookOf, SECTOR_COLORS, STRIPES, stripesImage, type Look } from './looks.ts'
+import { lookOf, mapLabel, sectorColor, STRIPES, stripesImage } from './looks.ts'
 import { useSectors, type Sector } from './sectors.ts'
 
-// Each look, as a choice the map makes for each sector from its "look" property.
-const byLook = (values: Record<Look, string | number>): ExpressionSpecification =>
-    ['match', ['get', 'look'], 'drawn', values.drawn, 'partial', values.partial, values.completed]
+// The map reads each sector's look, color and label from the facts sent with its shape.
+const COLOR: ExpressionSpecification = ['get', 'color']
 
 type Props = {
     selected: number | null             // the id of the selected sector, drawn with a stronger outline
@@ -20,9 +19,10 @@ type Props = {
 // The layer a click on a sector is read from: every sector, filled with nothing visible.
 const HIT = 'sectors-hit'
 
-// The saved sectors on the map: an outline in the look's color, a light green fill for a
-// completed sector, orange stripes for a partial one, and the name in the middle. It is
-// drawn inside the map (a child of MissionMap), above the search area line.
+// The saved sectors on the map: an outline in the look's color, a light fill for a
+// completed sector (green) and one being searched (its group's color), orange stripes for
+// a partial one, and the name in the middle, with the group for a sector a group holds. It
+// is drawn inside the map (a child of MissionMap), above the search area line.
 function SectorsOnMap({ selected, onPick, hidden = null }: Props) {
     const { sectors } = useSectors()
     useStripes()
@@ -35,8 +35,8 @@ function SectorsOnMap({ selected, onPick, hidden = null }: Props) {
             <Layer
                 id="sectors-fill"
                 type="fill"
-                filter={['==', ['get', 'look'], 'completed']}
-                paint={{ 'fill-color': SECTOR_COLORS.completed, 'fill-opacity': 0.18 }}
+                filter={['in', ['get', 'look'], ['literal', ['completed', 'searching']]]}
+                paint={{ 'fill-color': COLOR, 'fill-opacity': 0.18 }}
             />
             <Layer
                 id="sectors-stripes"
@@ -47,19 +47,19 @@ function SectorsOnMap({ selected, onPick, hidden = null }: Props) {
             <Layer
                 id="sectors-line"
                 type="line"
-                paint={{ 'line-color': byLook(SECTOR_COLORS), 'line-width': ['case', isSelected, 4, 2] }}
+                paint={{ 'line-color': COLOR, 'line-width': ['case', isSelected, 4, 2] }}
             />
             <Layer
                 id="sectors-label"
                 type="symbol"
                 filter={['==', ['geometry-type'], 'Point']}
                 layout={{
-                    'text-field': ['get', 'name'],
+                    'text-field': ['get', 'label'],
                     'text-font': ['Noto Sans Bold'],  // one of the map style's own fonts
                     'text-size': 13,
                     'text-allow-overlap': true,  // a sector's name always shows
                 }}
-                paint={{ 'text-color': byLook(SECTOR_COLORS), 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 }}
+                paint={{ 'text-color': COLOR, 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 }}
             />
         </Source>
     )
@@ -104,7 +104,9 @@ function sectorShapes(sectors: Sector[]): FeatureCollection<Polygon | Point> {
     return { type: 'FeatureCollection', features: [...shapes, ...labels] }
 }
 
-const facts = (sector: Sector) => ({ id: sector.id, name: sector.name, look: lookOf(sector) })
+const facts = (sector: Sector) => ({
+    id: sector.id, name: sector.name, look: lookOf(sector), color: sectorColor(sector), label: mapLabel(sector),
+})
 
 // Gives the map the stripe picture. A new map style drops pictures added by hand, and the
 // map then asks for any it is missing ("styleimagemissing"), so it is given again then.

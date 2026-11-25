@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { useState } from 'react'
 import { afterEach, expect, test, vi } from 'vitest'
 import type { Bounds } from '../map/geo.ts'
+import { NEVER_HELD, NO_LIFE } from '../sectors/sample.ts'
 import { SectorsContext, type Sector } from '../sectors/sectors.ts'
 import { SettingsContext, type Units } from '../settings/settings.ts'
 import DrawSearchArea from './DrawSearchArea.tsx'
@@ -50,7 +51,7 @@ function drawTool(save = vi.fn(async (_area: SearchArea) => ''), units: Units = 
         return (
             <SettingsContext value={{ settings: { units }, loadFailed: false, change: async () => false }}>
                 <SearchAreaContext value={{ area: null, loadedFor: 'bc', save }}>
-                    <SectorsContext value={{ sectors, loadedFor: 'bc', add: async () => '', changeShape: async () => '', remove: async () => '' }}>
+                    <SectorsContext value={{ sectors, loadedFor: 'bc', add: async () => '', changeShape: async () => '', remove: async () => '', ...NO_LIFE }}>
                         <div ref={setHintSlot} />
                         <DrawSearchArea hintSlot={hintSlot} onDone={onDone} />
                     </SectorsContext>
@@ -95,7 +96,7 @@ test('the card follows the Units setting', () => {
 // A small square sector with its south-west corner here.
 function sectorAt(id: number, lat: number, lon: number): Sector {
     return {
-        id, name: `S${id}`, status: 'drawn', group_id: null, can_edit: true, created_time: '2025-04-14T08:02:00Z', completed_time: null,
+        id, name: `S${id}`, status: 'drawn', group_id: null, can_edit: true, created_time: '2025-04-14T08:02:00Z', completed_time: null, ...NEVER_HELD,
         corners: [{ lat, lon }, { lat: lat + 0.01, lon }, { lat: lat + 0.01, lon: lon + 0.01 }, { lat, lon: lon + 0.01 }],
     }
 }

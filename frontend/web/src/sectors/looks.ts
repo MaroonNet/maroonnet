@@ -1,18 +1,36 @@
+import { groupColor } from '../teams/teamWords.ts'
 import type { Sector } from './sectors.ts'
 
-// How a sector looks on the map. Assigned (with its "S4 → G3" label) and Searching (in the
-// group's color) are added with assigning, in D7; until then both look drawn.
-export type Look = 'drawn' | 'partial' | 'completed'
+// How a sector looks on the map.
+//   drawn      a red outline
+//   assigned   a red outline, labeled with its group: "S4 → G3"
+//   searching  its group's color, outline and a light fill
+//   partial    an orange outline with stripes
+//   completed  green, outline and a light fill
+// A partial sector given to a group again keeps its stripes, with the group in its label,
+// until a team of that group enters it.
+export type Look = 'drawn' | 'assigned' | 'searching' | 'partial' | 'completed'
 
 export function lookOf(sector: Sector): Look {
-    if (sector.status === 'completed') return 'completed'
-    if (sector.status === 'partial') return 'partial'
-    return 'drawn'
+    if (sector.status !== 'drawn') return sector.status
+    return sector.group_id !== null ? 'assigned' : 'drawn'
 }
 
 // The map library takes colors as text: --color-red and --color-green in index.css, and
-// an orange for partial sectors.
-export const SECTOR_COLORS: Record<Look, string> = { drawn: '#c9302d', partial: '#e57600', completed: '#218a45' }
+// an orange for partial sectors. A searching sector takes its group's color instead.
+export const SECTOR_COLORS: Record<Exclude<Look, 'searching'>, string> = {
+    drawn: '#c9302d', assigned: '#c9302d', partial: '#e57600', completed: '#218a45',
+}
+
+// The color of a sector's outline and name.
+export function sectorColor(sector: Sector): string {
+    const look = lookOf(sector)
+    if (look !== 'searching') return SECTOR_COLORS[look]
+    return sector.group_id !== null ? groupColor(sector.group_id) : SECTOR_COLORS.drawn
+}
+
+// A sector's name on the map. One a group holds names the group, in the map's short form.
+export const mapLabel = (sector: Sector) => sector.group_id !== null ? `${sector.name} → G${sector.group_id}` : sector.name
 
 // The name the stripe picture goes by on the map.
 export const STRIPES = 'sector-stripes'

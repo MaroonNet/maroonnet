@@ -6,6 +6,7 @@ import { SearchAreaContext } from '../searchArea/searchArea.ts'
 import { SettingsContext, type Units } from '../settings/settings.ts'
 import type { SectorShape } from '../map/drawSector.ts'
 import DrawSector from './DrawSector.tsx'
+import { NO_LIFE } from './sample.ts'
 import { SectorsContext } from './sectors.ts'
 
 // The real drawing needs a real map. These stand-ins keep what the tool handed them, so a
@@ -73,7 +74,7 @@ function drawTool(add = vi.fn(async (_corners: Position[]) => ''), units: Units 
         return (
             <SettingsContext value={{ settings: { units }, loadFailed: false, change: async () => false }}>
                 <SearchAreaContext value={{ area: ARIZONA07_AREA, loadedFor: 'az07', save: async () => '' }}>
-                    <SectorsContext value={{ sectors: [], loadedFor: 'az07', add, changeShape: async () => '', remove: async () => '' }}>
+                    <SectorsContext value={{ sectors: [], loadedFor: 'az07', add, changeShape: async () => '', remove: async () => '', ...NO_LIFE }}>
                         <div ref={setToolSlot} />
                         <div ref={setHintSlot} />
                         <DrawSector shape={shape} hintSlot={hintSlot} toolSlot={toolSlot} onDone={onDone} />

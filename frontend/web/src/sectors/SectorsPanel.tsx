@@ -1,6 +1,6 @@
 import { useMission } from '../mission/mission.ts'
 import { useSectors } from './sectors.ts'
-import { sectorLine, STATUS_LABELS } from './sectorWords.ts'
+import { sectorLine, statusLabel } from './sectorWords.ts'
 
 const NOTE = 'px-4 pt-3 font-medium text-muted'  // a line said in place of the list
 
@@ -39,7 +39,7 @@ function SectorsPanel({ selected, onPick }: Props) {
                     >
                         <span className="w-8 font-mono text-figure">{sector.name}</span>
                         <span className="flex flex-col">
-                            <span>{STATUS_LABELS[sector.status]}</span>
+                            <span>{statusLabel(sector)}</span>
                             <span className="font-medium text-muted">{sectorLine(sector, mission.time_zone)}</span>
                         </span>
                     </button>

@@ -2,6 +2,7 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { useEffect } from 'react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { MissionContext, type MissionStatus, type OpenMission } from '../mission/mission.ts'
+import { NEVER_HELD } from './sample.ts'
 import { useSectors, type Sector, type SectorsBoard } from './sectors.ts'
 import SectorsProvider from './SectorsProvider.tsx'
 
@@ -15,7 +16,7 @@ function sector(id: number, status: Sector['status'] = 'drawn'): Sector {
     return {
         id, name: `S${id}`, status, group_id: null, can_edit: status === 'drawn',
         corners: [{ lat: 31.5, lon: -110.7 }, { lat: 31.51, lon: -110.7 }, { lat: 31.51, lon: -110.69 }],
-        created_time: '2025-04-14T03:35:00Z', completed_time: null,
+        created_time: '2025-04-14T03:35:00Z', completed_time: null, ...NEVER_HELD,
     }
 }
 
@@ -193,4 +194,76 @@ test("a refused sector is not put on the board, and the backend's reason is give
 
     expect(reason).toBe('A sector must be inside the search area.')
     expect(names()).toBe('')
+})
+
+// The rest of a sector's life. A backend that holds S1 and S2, drawn, and Group 1 holding
+// S1; giving S2 to Group 1 releases S1, so one request changes two sectors.
+function backendWithGroups() {
+    let sectors = [{ ...sector(1), group_id: 1 as number | null }, sector(2)]
+    const sent: { address: string, body: unknown }[] = []
+    const refuses = { reason: '' }
+    const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+    vi.stubGlobal('fetch', vi.fn(async (address: string, request?: RequestInit) => {
+        if (address === '/api/mission/sectors') return json(sectors)
+        sent.push({ address, body: request?.body ? JSON.parse(request.body as string) : null })
+        if (refuses.reason) return json({ detail: refuses.reason }, 409)
+        if (address === '/api/mission/sectors/2/assign') {
+            sectors = [{ ...sectors[0], group_id: null }, { ...sectors[1], group_id: 1 }]
+        }
+        return json(sectors[1])
+    }))
+    return { sent, refuses }
+}
+function Holders() {
+    const read = useSectors()
+    useEffect(() => { board = read })
+    return <p data-testid="holders">{read.sectors.map((s) => `${s.name}:${s.group_id}`).join(' ')}</p>
+}
+async function openWithGroups() {
+    const backend = backendWithGroups()
+    render(
+        <MissionContext value={{ mission: mission('bc', 'active'), loadFailed: false, run: async () => '' }}>
+            <SectorsProvider><Holders /></SectorsProvider>
+        </MissionContext>,
+    )
+    await waitFor(() => expect(screen.getByTestId('holders').textContent).toBe('S1:1 S2:null'))
+    return backend
+}
+
+test('assigning a sector reads every sector again, since the group may have let go of another', async () => {
+    const backend = await openWithGroups()
+
+    let reason: string | undefined
+    await act(async () => { reason = await board.assign(2, 1) })
+
+    expect(reason).toBe('')
+    expect(backend.sent).toEqual([{ address: '/api/mission/sectors/2/assign', body: { group_id: 1 } }])
+    expect(screen.getByTestId('holders').textContent).toBe('S1:null S2:1')
+})
+
+test('release, mark entered and mark completed each go to their own route', async () => {
+    const backend = await openWithGroups()
+
+    await act(async () => {
+        await board.release(1)
+        await board.markEntered(1, 7)
+        await board.complete(1)
+    })
+
+    expect(backend.sent).toEqual([
+        { address: '/api/mission/sectors/1/release', body: null },
+        { address: '/api/mission/sectors/1/entered', body: { radio_id: 7 } },
+        { address: '/api/mission/sectors/1/complete', body: null },
+    ])
+})
+
+test("a refused assignment leaves the board as it was, and the backend's reason is given", async () => {
+    const backend = await openWithGroups()
+    backend.refuses.reason = 'Group 3 has no teams, so it cannot be given a sector.'
+
+    let reason: string | undefined
+    await act(async () => { reason = await board.assign(2, 3) })
+
+    expect(reason).toBe('Group 3 has no teams, so it cannot be given a sector.')
+    expect(screen.getByTestId('holders').textContent).toBe('S1:1 S2:null')
 })
