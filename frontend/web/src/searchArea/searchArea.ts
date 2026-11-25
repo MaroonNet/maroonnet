@@ -1,7 +1,10 @@
 import { createContext, useContext, useEffect, useRef } from 'react'
-import type { Bounds } from '../map/geo.ts'
+import type { Bounds, Position } from '../map/geo.ts'
 import { useMissionMap } from '../map/missionMap.ts'
 import { ask } from '../mission/mission.ts'
+import { useSectors, type Sector } from '../sectors/sectors.ts'
+import { commandPost } from '../waypoints/waypointWords.ts'
+import { useWaypoints } from '../waypoints/waypoints.ts'
 
 // The open mission's search area, as the backend answers it (backend/search_area/routes.py):
 // the rectangle's south-west and north-east corners, in degrees.
@@ -39,29 +42,50 @@ const EDGE = 40
 // A panel covers this much of the map's left side (--spacing-panel in index.css).
 const PANEL_WIDTH = 300
 
-// Moves the map over the open mission's search area: once when the page opens with a
-// mission open, and again each time another mission is opened. A mission with no search
-// area leaves the map where it was, and so does saving a new area: the user has just
-// drawn it, so it is already on screen. panelOpen: a panel is covering the map's left side.
-export function useMapOverSearchArea(panelOpen: boolean) {
+// The box the map is fitted to when a mission is opened. With a command post, the box is
+// centered on it and reaches far enough every way to show every sector, or the whole
+// search area when there are no sectors. Without one, it is the search area. None: there is
+// no search area, so the map stays where it was.
+function openingBox(area: SearchArea | null, post: Position | undefined, sectors: Sector[]): Bounds | null {
+    if (!area) return null
+    if (!post) return area
+    const corners = sectors.length > 0
+        ? sectors.flatMap((sector) => sector.corners)
+        : [{ lat: area.min_lat, lon: area.min_lon }, { lat: area.max_lat, lon: area.max_lon }]
+    const across = Math.max(...corners.map((corner) => Math.abs(corner.lon - post.lon)))
+    const up = Math.max(...corners.map((corner) => Math.abs(corner.lat - post.lat)))
+    return { min_lat: post.lat - up, min_lon: post.lon - across, max_lat: post.lat + up, max_lon: post.lon + across }
+}
+
+// Moves the map to the opening box above: once when the page opens with a mission open, and
+// again each time another mission is opened. It waits until the search area, the waypoints
+// and the sectors have all been read for that mission. Changes after that, such as a new
+// search area the user has just drawn, leave the map where it is. panelOpen: a panel is
+// covering the map's left side.
+export function useOpeningView(panelOpen: boolean) {
     const map = useMissionMap()
-    const { area, loadedFor } = useSearchArea()
+    const { area, loadedFor: areaFor } = useSearchArea()
+    const { waypoints, loadedFor: waypointsFor } = useWaypoints()
+    const { sectors, loadedFor: sectorsFor } = useSectors()
+    // The mission all three were read for, once they agree.
+    const readFor = areaFor !== null && areaFor === waypointsFor && areaFor === sectorsFor ? areaFor : null
     // Kept in refs (boxes whose contents can change without redrawing) so that opening or
-    // closing a panel, or saving a new area, does not move the map; only opening a mission does.
+    // closing a panel, or a change to the mission, does not move the map; only opening a
+    // mission does.
     const panelIsOpen = useRef(panelOpen)
-    const areaNow = useRef(area)
+    const box = useRef<Bounds | null>(null)
     useEffect(() => {
         panelIsOpen.current = panelOpen
-        areaNow.current = area
-    }, [panelOpen, area])
+        box.current = openingBox(area, commandPost(waypoints), sectors)
+    }, [panelOpen, area, waypoints, sectors])
 
     useEffect(() => {
-        const box = areaNow.current
-        if (!map || !loadedFor || !box) return
+        const fit = box.current
+        if (!map || !readFor || !fit) return
         const left = panelIsOpen.current ? PANEL_WIDTH + EDGE : EDGE
-        map.fitBounds([[box.min_lon, box.min_lat], [box.max_lon, box.max_lat]], {
+        map.fitBounds([[fit.min_lon, fit.min_lat], [fit.max_lon, fit.max_lat]], {
             padding: { top: EDGE, bottom: EDGE, right: EDGE, left },
             duration: 0,  // jump there: gliding across states would load every tile on the way
         })
-    }, [map, loadedFor])
+    }, [map, readFor])
 }

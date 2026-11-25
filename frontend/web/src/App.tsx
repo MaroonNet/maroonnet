@@ -21,7 +21,7 @@ import HeatmapOnMap from './probability/HeatmapOnMap.tsx'
 import AreaPanel from './searchArea/AreaPanel.tsx'
 import DrawSearchArea from './searchArea/DrawSearchArea.tsx'
 import SearchAreaOutline from './searchArea/SearchAreaOutline.tsx'
-import { useMapOverSearchArea, useSearchArea } from './searchArea/searchArea.ts'
+import { useOpeningView, useSearchArea } from './searchArea/searchArea.ts'
 import type { SectorShape } from './map/drawSector.ts'
 import DrawSector from './sectors/DrawSector.tsx'
 import EditSectorShape from './sectors/EditSectorShape.tsx'
@@ -68,7 +68,7 @@ function App() {
   const { mission } = useMission()
   const { area } = useSearchArea()
 
-  useMapOverSearchArea(openPanel !== null)
+  useOpeningView(openPanel !== null)
 
   // If the picked tool becomes greyed, as when the mission is closed while it is in use, the
   // toolbar goes back to Select.

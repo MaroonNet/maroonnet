@@ -30,6 +30,7 @@ export const removeWaypoint = (id: number) => ask<null>(`/api/mission/waypoints/
 // when it did not. The board changes only when a change worked.
 export type WaypointsBoard = {
     waypoints: Waypoint[]       // in the order they were saved; none while no mission is open
+    loadedFor: string | null    // the id of the mission the waypoints were read for; none until read
     add: (placing: Placing) => Promise<Waypoint | string>
     change: (id: number, placing: Placing) => Promise<Waypoint | string>
     remove: (id: number) => Promise<string>
@@ -40,6 +41,7 @@ export type WaypointsBoard = {
 const NO_BOARD = 'There is no waypoints board.'
 export const WaypointsContext = createContext<WaypointsBoard>({
     waypoints: [],
+    loadedFor: null,
     add: async () => NO_BOARD,
     change: async () => NO_BOARD,
     remove: async () => NO_BOARD,

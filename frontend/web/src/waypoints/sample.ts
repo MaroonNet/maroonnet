@@ -30,7 +30,7 @@ export const ARIZONA07: Waypoint[] = [
 // unless a test gives its own.
 export function board(waypoints: Waypoint[], changes: Partial<WaypointsBoard> = {}): WaypointsBoard {
     return {
-        waypoints, add: async () => 'Not in this test.', change: async () => 'Not in this test.', remove: async () => 'Not in this test.',
+        waypoints, loadedFor: null, add: async () => 'Not in this test.', change: async () => 'Not in this test.', remove: async () => 'Not in this test.',
         ...changes,
     }
 }

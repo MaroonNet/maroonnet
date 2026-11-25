@@ -45,8 +45,10 @@ function WaypointsProvider({ children }: { children: ReactNode }) {
     const remove = async (id: number) => await sendThenRead(() => removeWaypoint(id)) ?? ''
 
     // What was read for an earlier mission is not this mission's waypoints.
-    const waypoints = read && read.missionId === missionId ? read.waypoints : []
-    return <WaypointsContext value={{ waypoints, add, change, remove }}>{children}</WaypointsContext>
+    const current = read && read.missionId === missionId ? read : null
+    const waypoints = current?.waypoints ?? []
+    const loadedFor = current?.missionId ?? null
+    return <WaypointsContext value={{ waypoints, loadedFor, add, change, remove }}>{children}</WaypointsContext>
 }
 
 export default WaypointsProvider

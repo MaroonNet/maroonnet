@@ -2,7 +2,11 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { useEffect } from 'react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { MissionContext, type OpenMission } from '../mission/mission.ts'
-import { useMapOverSearchArea, useSearchArea, type SearchArea, type SearchAreaBoard } from './searchArea.ts'
+import { NO_LIFE, sector } from '../sectors/sample.ts'
+import { SectorsContext, type Sector } from '../sectors/sectors.ts'
+import { board as waypointsBoard, waypoint } from '../waypoints/sample.ts'
+import { WaypointsContext, type Waypoint } from '../waypoints/waypoints.ts'
+import { useOpeningView, useSearchArea, type SearchArea, type SearchAreaBoard } from './searchArea.ts'
 import SearchAreaProvider from './SearchAreaProvider.tsx'
 
 afterEach(() => {
@@ -51,41 +55,92 @@ function pretendMap() {
 }
 
 // The pieces under test, with a mission on its board: the search area board, the piece
-// that moves the map, and a line of text showing the area on the board.
-function Screen({ open, panelOpen = false }: { open: OpenMission | null, panelOpen?: boolean }) {
+// that moves the map, and a line of text showing the area on the board. The waypoints and
+// sectors boards hold what is given, read for readFor: the open mission unless a test says.
+type Drawn = { open: OpenMission | null, panelOpen?: boolean, waypoints?: Waypoint[], sectors?: Sector[], readFor?: string | null }
+function Screen({ open, panelOpen = false, waypoints = [], sectors = [], readFor = open?.id ?? null }: Drawn) {
     return (
         <MissionContext value={{ mission: open, loadFailed: false, run: async () => '' }}>
-            <SearchAreaProvider>
-                <Mover panelOpen={panelOpen} />
-            </SearchAreaProvider>
+            <WaypointsContext value={waypointsBoard(waypoints, { loadedFor: readFor })}>
+                <SectorsContext value={{ sectors, loadedFor: readFor, add: async () => '', changeShape: async () => '', remove: async () => '', ...NO_LIFE }}>
+                    <SearchAreaProvider>
+                        <Mover panelOpen={panelOpen} />
+                    </SearchAreaProvider>
+                </SectorsContext>
+            </WaypointsContext>
         </MissionContext>
     )
 }
 let saveArea: SearchAreaBoard['save']  // the board's save, for a test to call
 function Mover({ panelOpen }: { panelOpen: boolean }) {
-    useMapOverSearchArea(panelOpen)
+    useOpeningView(panelOpen)
     const { area, save } = useSearchArea()
     useEffect(() => { saveArea = save })
     return <p data-testid="area">{JSON.stringify(area)}</p>
 }
 const areaOnBoard = () => JSON.parse(screen.getByTestId('area').textContent!)
 
-test('opening a mission moves the map over its search area', async () => {
+// Arizona07's command post.
+const POST = waypoint(1, 'command_post', 'Command post', { lat: 31.5062579, lon: -110.6775338 })
+
+// The box the map was fitted to: west, south, east, north, to four places.
+const fitted = (map: ReturnType<typeof pretendMap>, call = 0) =>
+    (map.fitBounds.mock.calls[call][0] as number[][]).flat().map((degrees) => Number(degrees.toFixed(4)))
+
+test('with no command post, opening a mission fits the map to its search area, sectors or not', async () => {
     const backend = pretendBackend({ az07: ARIZONA07_AREA })
     const map = pretendMap()
     backend.open = 'az07'
-    render(<Screen open={mission('az07')} />)
+    render(<Screen open={mission('az07')} sectors={[sector(7, 'drawn')]} />)
 
     await waitFor(() => expect(map.fitBounds).toHaveBeenCalledTimes(1))
     // West and south first, then east and north, as MapLibre takes them.
     expect(map.fitBounds.mock.calls[0][0]).toEqual([[-110.8083, 31.3926], [-110.544, 31.619]])
 })
 
-test('a mission with no search area leaves the map where it was', async () => {
+test('with a command post and no sectors, the map is centered on the command post and shows the whole search area', async () => {
+    const backend = pretendBackend({ az07: ARIZONA07_AREA })
+    const map = pretendMap()
+    backend.open = 'az07'
+    render(<Screen open={mission('az07')} waypoints={[POST]} />)
+
+    await waitFor(() => expect(map.fitBounds).toHaveBeenCalledTimes(1))
+    // The area reaches furthest from the command post to the east and the south; the box
+    // reaches as far the other way, so the command post is in its middle.
+    expect(fitted(map)).toEqual([-110.8111, 31.3926, -110.544, 31.6199])
+})
+
+test('with a command post and sectors, the map is centered on the command post and shows every sector', async () => {
+    const backend = pretendBackend({ az07: ARIZONA07_AREA })
+    const map = pretendMap()
+    backend.open = 'az07'
+    const post = waypoint(1, 'command_post', 'Command post', { lat: 31.5, lon: -110.68 })
+    render(<Screen open={mission('az07')} waypoints={[post]} sectors={[sector(7, 'drawn')]} />)
+
+    await waitFor(() => expect(map.fitBounds).toHaveBeenCalledTimes(1))
+    // The sample sector, 31.5 to 31.51 north and 110.7 to 110.69 west, reaches 0.02 degrees
+    // west of the command post and 0.01 north; the box reaches as far east and south.
+    expect(fitted(map)).toEqual([-110.7, 31.49, -110.66, 31.51])
+})
+
+test('the map waits until the waypoints and sectors of the mission just opened are read', async () => {
+    const backend = pretendBackend({ az07: ARIZONA07_AREA })
+    const map = pretendMap()
+    backend.open = 'az07'
+    const page = render(<Screen open={mission('az07')} waypoints={[POST]} readFor={null} />)
+    await waitFor(() => expect(areaOnBoard()).toEqual(ARIZONA07_AREA))
+    expect(map.fitBounds).not.toHaveBeenCalled()
+
+    page.rerender(<Screen open={mission('az07')} waypoints={[POST]} />)
+    await waitFor(() => expect(map.fitBounds).toHaveBeenCalledTimes(1))
+    expect(fitted(map)).toEqual([-110.8111, 31.3926, -110.544, 31.6199])
+})
+
+test('a mission with no search area leaves the map where it was, even with a command post', async () => {
     const backend = pretendBackend({ bc: null })
     const map = pretendMap()
     backend.open = 'bc'
-    render(<Screen open={mission('bc')} />)
+    render(<Screen open={mission('bc')} waypoints={[POST]} />)
 
     await waitFor(() => expect(backend.asked).toBe(1))
     expect(map.fitBounds).not.toHaveBeenCalled()
