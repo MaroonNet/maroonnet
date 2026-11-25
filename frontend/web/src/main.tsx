@@ -8,6 +8,7 @@ import './index.css'
 import App from './App.tsx'
 import MissionProvider from './mission/MissionProvider.tsx'
 import PeopleProvider from './people/PeopleProvider.tsx'
+import ProbabilityProvider from './probability/ProbabilityProvider.tsx'
 import SearchAreaProvider from './searchArea/SearchAreaProvider.tsx'
 import SectorsProvider from './sectors/SectorsProvider.tsx'
 import SettingsProvider from './settings/SettingsProvider.tsx'
@@ -25,7 +26,9 @@ createRoot(document.getElementById('root')!).render(
               <PeopleProvider>
                 <WaypointsProvider>
                   <TracksProvider>
-                    <App />
+                    <ProbabilityProvider>
+                      <App />
+                    </ProbabilityProvider>
                   </TracksProvider>
                 </WaypointsProvider>
               </PeopleProvider>

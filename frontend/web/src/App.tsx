@@ -17,6 +17,7 @@ import StillRunningBox from './mission/StillRunningBox.tsx'
 import MeasureTool from './measure/MeasureTool.tsx'
 import { useMission } from './mission/mission.ts'
 import PeoplePanel from './people/PeoplePanel.tsx'
+import HeatmapOnMap from './probability/HeatmapOnMap.tsx'
 import AreaPanel from './searchArea/AreaPanel.tsx'
 import DrawSearchArea from './searchArea/DrawSearchArea.tsx'
 import SearchAreaOutline from './searchArea/SearchAreaOutline.tsx'
@@ -177,6 +178,8 @@ function App() {
       )}
       <main className="relative z-0 min-w-0 flex-1">
         <MissionMap hidden={hidden} pickedUses={pickedUses}>
+          {/* First, so it lies under everything else drawn for the mission. */}
+          <HeatmapOnMap layer={missionLayers.heatmap} />
           <SearchAreaOutline />
           <SectorsOnMap
             selected={selectedSector}
