@@ -120,6 +120,22 @@ test('pressing Area opens the Search Area panel', () => {
     expect(screen.getByText('No mission is open.')).toBeTruthy()
 })
 
+test('pressing Groups & Teams opens its panel', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Groups & Teams' }))
+    expect(screen.getByRole('heading', { name: 'Groups & Teams' })).toBeTruthy()
+    expect(screen.getByText('No mission is open.')).toBeTruthy()
+})
+
+test('pressing Mesh opens the Mesh panel, and the button shows no figure', () => {
+    render(<App />)
+    const mesh = screen.getByRole('button', { name: 'Mesh' })
+    expect(mesh.textContent).toBe('Mesh')
+    fireEvent.click(mesh)
+    expect(screen.getByRole('heading', { name: 'Mesh' })).toBeTruthy()
+    expect(screen.getByText('No mission is open.')).toBeTruthy()
+})
+
 test('a greyed button opens nothing and says "Not available yet"', () => {
     render(<App />)
     const alerts = screen.getByRole('button', { name: 'Alerts' })

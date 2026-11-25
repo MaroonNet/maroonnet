@@ -23,6 +23,9 @@ import SectorCard from './sectors/SectorCard.tsx'
 import SectorsPanel from './sectors/SectorsPanel.tsx'
 import SectorsOnMap from './sectors/SectorsOnMap.tsx'
 import SettingsPanel from './settings/SettingsPanel.tsx'
+import MeshPanel from './teams/MeshPanel.tsx'
+import TeamCard from './teams/TeamCard.tsx'
+import TeamsPanel from './teams/TeamsPanel.tsx'
 
 // The tools that are greyed, and why: a search area belongs to a mission, and a sector is
 // drawn inside the search area.
@@ -59,9 +62,19 @@ function App() {
   const greyed = greyedTools(mission !== null, area !== null)
   if (greyed?.[tool]) setTool('select')
 
-  // The selected sector, picked on the map or in the Sectors panel. Its card shows while no
+  // What is selected: a sector, picked on the map or in the Sectors panel, or a team, picked
+  // in the Groups & Teams panel. One thing is selected at a time, and its card shows while no
   // drawing tool has a card of its own up.
   const [selectedSector, setSelectedSector] = useState<number | null>(null)
+  const [selectedTeam, setSelectedTeam] = useState<number | null>(null)  // the team's radio
+  function pickSector(id: number | null) {
+    setSelectedSector(id)
+    setSelectedTeam(null)
+  }
+  function pickTeam(id: number) {
+    setSelectedTeam(id)
+    setSelectedSector(null)
+  }
   const drawing = tool === 'sector' || tool === 'search-area'
   // The sector whose shape is being edited, from its card's Edit Shape. Picking another
   // tool ends the editing without saving.
@@ -83,6 +96,11 @@ function App() {
           <MissionPanel />
         </Panel>
       )}
+      {openPanel === 'teams' && (
+        <Panel title="Groups & Teams" onClose={() => setOpenPanel(null)}>
+          <TeamsPanel selected={selectedTeam} onPick={pickTeam} />
+        </Panel>
+      )}
       {openPanel === 'people' && (
         <Panel title="People" onClose={() => setOpenPanel(null)}>
           <PeoplePanel />
@@ -90,12 +108,17 @@ function App() {
       )}
       {openPanel === 'sectors' && (
         <Panel title="Sectors" onClose={() => setOpenPanel(null)}>
-          <SectorsPanel selected={selectedSector} onPick={setSelectedSector} />
+          <SectorsPanel selected={selectedSector} onPick={pickSector} />
         </Panel>
       )}
       {openPanel === 'area' && (
         <Panel title="Search Area" onClose={() => setOpenPanel(null)}>
           <AreaPanel />
+        </Panel>
+      )}
+      {openPanel === 'mesh' && (
+        <Panel title="Mesh" onClose={() => setOpenPanel(null)}>
+          <MeshPanel />
         </Panel>
       )}
       {openPanel === 'layers' && (
@@ -124,7 +147,7 @@ function App() {
           <SearchAreaOutline />
           <SectorsOnMap
             selected={selectedSector}
-            onPick={tool === 'select' && editingSector === null ? setSelectedSector : undefined}
+            onPick={tool === 'select' && editingSector === null ? pickSector : undefined}
             hidden={editingSector}
           />
           {tool === 'measure' && <MeasureTool hintSlot={hintSlot} />}
@@ -143,6 +166,9 @@ function App() {
           <EditSectorShape id={editingSector} hintSlot={hintSlot} onClose={() => setEditingSector(null)} />
         ) : selectedSector !== null && !drawing && (
           <SectorCard id={selectedSector} onClose={() => setSelectedSector(null)} onEdit={setEditingSector} />
+        )}
+        {selectedTeam !== null && editingSector === null && !drawing && (
+          <TeamCard id={selectedTeam} onClose={() => setSelectedTeam(null)} />
         )}
         {/* key: picking the other shape starts the tool afresh. */}
         {tool === 'sector' && (

@@ -20,7 +20,7 @@ function mission(id: string, status: MissionStatus = 'planning'): OpenMission {
 // Stands in for the backend: a roster of one, and a mission of one person who is checked
 // in once the check-in route is asked. It counts how often each list was read.
 function pretendBackend() {
-    const backend = { rosterReads: 0, peopleReads: 0, checkedIn: false, refuses: '' }
+    const backend = { rosterReads: 0, peopleReads: 0, radioReads: 0, checkedIn: false, refuses: '' }
     const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
     vi.stubGlobal('fetch', vi.fn(async (address: string, request?: RequestInit) => {
         if (address === '/api/roster') {
@@ -31,6 +31,12 @@ function pretendBackend() {
             backend.peopleReads += 1
             return json([{ id: 1, first_name: 'Ana', last_name: 'Ruiz', checked_in: backend.checkedIn }])
         }
+        if (address === '/api/mission/radios') {
+            backend.radioReads += 1
+            // Once Ana is checked in she is put on radio 1, so the radio list changes too.
+            return json([{ id: 1, node_num: 101, kind: 'searcher', people: backend.checkedIn ? [{ id: 1, name: 'Ana Ruiz', placeholder: false }] : [], group_id: null, last_position: null }])
+        }
+        if (address === '/api/mission/groups') return json([{ id: 1, radio_ids: [], sector: null }])
         if (address === '/api/mission/people/1/check-in' && request?.method === 'POST') {
             if (backend.refuses) return json({ detail: backend.refuses }, 409)
             backend.checkedIn = true
@@ -90,6 +96,25 @@ test('a change that worked is followed by reading both lists again', async () =>
     expect(reason).toBe('')
     await screen.findByText('1 on roster, 1 of 1 checked in')
     expect(backend.rosterReads).toBe(2)
+})
+
+test('the radios and groups are read with the people, and again after a change', async () => {
+    const backend = pretendBackend()
+    const { rerender } = render(<Screen open={null} />)
+    await screen.findByText('1 on roster, 0 of 0 checked in')
+    expect(board.radios).toEqual([])
+    expect(board.groups).toEqual([])
+    expect(backend.radioReads).toBe(0)  // radios belong to a mission
+
+    rerender(<Screen open={mission('bc')} />)
+    await waitFor(() => expect(board.radios.map((radio) => radio.people.length)).toEqual([0]))
+    expect(board.groups.map((group) => group.id)).toEqual([1])
+
+    await act(async () => { await board.run(checkIn(1)) })
+    await waitFor(() => expect(board.radios.map((radio) => radio.people.length)).toEqual([1]))
+
+    rerender(<Screen open={null} />)
+    await waitFor(() => expect(board.radios).toEqual([]))
 })
 
 test('a change the backend refuses answers with its reason, and the board stays as it was', async () => {

@@ -6,18 +6,10 @@ import { useMission } from '../mission/mission.ts'
 import { formatTime } from '../mission/missionTime.ts'
 import ManageRoster from './ManageRoster.tsx'
 import { checkIn, saveToRoster, usePeople, type Person } from './people.ts'
-import { matches, personLine, personName } from './peopleWords.ts'
+import { inOrder, matches, personLine, personName } from './peopleWords.ts'
 import PersonView from './PersonView.tsx'
 
 const NOTE = 'px-4 pt-3 font-medium text-muted'  // a line said in place of a list
-
-// By last name, with the placeholders after the real people.
-function inOrder(people: Person[]): Person[] {
-    return [...people].sort((a, b) =>
-        Number(a.placeholder) - Number(b.placeholder)
-        || a.last_name.localeCompare(b.last_name, undefined, { numeric: true })
-        || a.first_name.localeCompare(b.first_name))
-}
 
 // What the People panel shows: the people checked in to the open mission with what each
 // carries, then those who are in the mission and not checked in (carried from the last

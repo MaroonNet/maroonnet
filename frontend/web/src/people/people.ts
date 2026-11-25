@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react'
 import { ask } from '../mission/mission.ts'
+import type { Group, Radio } from '../teams/teams.ts'
 
 // A roster person as the backend answers them (backend/people/roster.py). The roster is
 // everyone the team knows, kept between missions.
@@ -58,15 +59,17 @@ export const replacePlaceholder = (id: number, roster_id: number) => ask<Person>
 export const removePlaceholder = (id: number) => ask<null>(`/api/mission/people/${id}`, 'DELETE')
 export const saveToRoster = (id: number) => ask<Person>(`/api/mission/people/${id}/save-to-roster`, 'POST')
 
-// The board: the roster and the open mission's people, kept in one place that any
-// component can read.
+// The board: the roster, and the open mission's people, radios and groups, kept in one
+// place that any component can read. They are on one board because one change reaches
+// several of them: putting a person on a radio changes the person and the radio.
 export type PeopleBoard = {
     roster: RosterPerson[]  // by last name
     people: Person[]        // none while no mission is open
-    // Waits for one of the requests above, then reads the roster and the people again, so
-    // the screen always shows what is saved. One change can reach both lists: renaming a
-    // roster person renames them in the mission. The answer is empty when it worked, and
-    // the reason when it did not.
+    radios: Radio[]         // every radio of the open mission, by its number
+    groups: Group[]         // every group of the open mission, by its number
+    // Waits for one of the requests above, or one of teams/teams.ts, then reads every list
+    // again, so the screen always shows what is saved. The answer is empty when it worked,
+    // and the reason when it did not.
     run: (request: Promise<unknown>) => Promise<string>
 }
 
@@ -75,6 +78,8 @@ export type PeopleBoard = {
 export const PeopleContext = createContext<PeopleBoard>({
     roster: [],
     people: [],
+    radios: [],
+    groups: [],
     run: async () => 'There is no people board.',
 })
 

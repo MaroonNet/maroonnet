@@ -14,6 +14,14 @@ export function personName(person: Person): string {
     return `${person.first_name} ${person.last_name}`
 }
 
+// By last name, with the placeholders after the real people.
+export function inOrder(people: Person[]): Person[] {
+    return [...people].sort((a, b) =>
+        Number(a.placeholder) - Number(b.placeholder)
+        || a.last_name.localeCompare(b.last_name, undefined, { numeric: true })
+        || a.first_name.localeCompare(b.first_name))
+}
+
 // Whether a name holds what was typed in the search box. Capitals do not matter.
 export function matches(name: string, search: string): boolean {
     return name.toLowerCase().includes(search.trim().toLowerCase())

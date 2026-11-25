@@ -64,7 +64,7 @@ function show(mission: OpenMission | null = arizona(), people: Person[] = PEOPLE
     const run = async (request: Promise<unknown>) => request.then(() => '', (error: Error) => error.message)
     return render(
         <MissionContext value={{ mission, loadFailed: false, run: async () => '' }}>
-            <PeopleContext value={{ roster: ROSTER, people: mission ? people : [], run }}>
+            <PeopleContext value={{ roster: ROSTER, people: mission ? people : [], radios: [], groups: [], run }}>
                 <PeoplePanel />
             </PeopleContext>
         </MissionContext>,

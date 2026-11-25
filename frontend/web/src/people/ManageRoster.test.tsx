@@ -54,7 +54,7 @@ function show({ mission = bearCreek(), roster = ROSTER, people = PEOPLE, onClose
     const run = async (request: Promise<unknown>) => request.then(() => '', (error: Error) => error.message)
     return render(
         <MissionContext value={{ mission, loadFailed: false, run: async () => '' }}>
-            <PeopleContext value={{ roster, people: mission ? people : [], run }}>
+            <PeopleContext value={{ roster, people: mission ? people : [], radios: [], groups: [], run }}>
                 <ManageRoster onClose={onClose} />
             </PeopleContext>
         </MissionContext>,
