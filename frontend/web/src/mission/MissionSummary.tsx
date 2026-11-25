@@ -6,16 +6,22 @@ import { statusLabel } from '../sectors/sectorWords.ts'
 import { useSettings } from '../settings/settings.ts'
 import { formatArea } from '../settings/units.ts'
 import { teamsOf } from '../teams/teamWords.ts'
+import { commandPost } from '../waypoints/waypointWords.ts'
+import { useWaypoints } from '../waypoints/waypoints.ts'
+import { formatPosition } from '../map/position.ts'
 
 const LABEL = 'font-mono text-label tracking-widest text-muted uppercase'
 
 // The Mission panel's overview of the open mission: how many people are checked in, how
-// many teams, groups and sectors there are, and a table of the sectors. It only shows; a
-// sector is picked on the map or in the Sectors panel.
+// many teams, groups, sectors and waypoints there are, where the command post is, and a
+// table of the sectors. It only shows; a sector is picked on the map or in the Sectors
+// panel, and the command post is placed with the Drop Waypoint tool.
 function MissionSummary() {
     const { people, radios, groups } = usePeople()
     const { sectors } = useSectors()
     const { units } = useSettings().settings
+    const { waypoints } = useWaypoints()
+    const post = commandPost(waypoints)
     const checkedIn = people.filter((person) => person.checked_in).length
 
     return (
@@ -25,6 +31,9 @@ function MissionSummary() {
                 <dt className={LABEL}>Teams</dt><dd>{teamsOf(radios).length}</dd>
                 <dt className={LABEL}>Groups</dt><dd>{groups.length}</dd>
                 <dt className={LABEL}>Sectors</dt><dd>{sectors.length}</dd>
+                <dt className={LABEL}>Waypoints</dt><dd>{waypoints.length}</dd>
+                <dt className={LABEL}>Command post</dt>
+                <dd className={post ? 'font-mono' : 'font-medium text-muted'}>{post ? formatPosition(post) : 'Not placed'}</dd>
             </dl>
             {sectors.length > 0 && (
                 <table className="mt-3 w-full text-left">

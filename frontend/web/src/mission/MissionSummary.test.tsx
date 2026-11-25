@@ -5,6 +5,8 @@ import { held, NO_LIFE, sector } from '../sectors/sample.ts'
 import { SectorsContext, type Sector } from '../sectors/sectors.ts'
 import { SettingsContext } from '../settings/settings.ts'
 import { GROUPS, PEOPLE, RADIOS } from '../teams/sample.ts'
+import { ARIZONA07, board } from '../waypoints/sample.ts'
+import { WaypointsContext } from '../waypoints/waypoints.ts'
 import MissionSummary from './MissionSummary.tsx'
 
 afterEach(cleanup)
@@ -27,9 +29,20 @@ function facts(): Record<string, string | null> {
     return Object.fromEntries(screen.getAllByRole('term').map((label) => [label.textContent, label.nextElementSibling!.textContent]))
 }
 
-test('the summary counts the people checked in, the teams, the groups and the sectors', () => {
+test('the summary counts the people checked in, the teams, the groups, the sectors and the waypoints', () => {
     show([sector(1, 'completed'), sector(7, 'drawn')])
-    expect(facts()).toEqual({ People: '8 checked in', Teams: '4', Groups: '3', Sectors: '2' })
+    expect(facts()).toEqual({
+        People: '8 checked in', Teams: '4', Groups: '3', Sectors: '2', Waypoints: '0', 'Command post': 'Not placed',
+    })
+})
+
+test('the summary says where the command post is', () => {
+    render(
+        <WaypointsContext value={board(ARIZONA07)}>
+            <MissionSummary />
+        </WaypointsContext>,
+    )
+    expect(facts()).toMatchObject({ Waypoints: '6', 'Command post': '31.5063 N 110.6775 W' })
 })
 
 test('the table has a row for each sector: its name, status, group and area', () => {

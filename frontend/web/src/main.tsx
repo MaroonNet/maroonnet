@@ -11,6 +11,7 @@ import PeopleProvider from './people/PeopleProvider.tsx'
 import SearchAreaProvider from './searchArea/SearchAreaProvider.tsx'
 import SectorsProvider from './sectors/SectorsProvider.tsx'
 import SettingsProvider from './settings/SettingsProvider.tsx'
+import WaypointsProvider from './waypoints/WaypointsProvider.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -21,7 +22,9 @@ createRoot(document.getElementById('root')!).render(
           <SearchAreaProvider>
             <SectorsProvider>
               <PeopleProvider>
-                <App />
+                <WaypointsProvider>
+                  <App />
+                </WaypointsProvider>
               </PeopleProvider>
             </SectorsProvider>
           </SearchAreaProvider>

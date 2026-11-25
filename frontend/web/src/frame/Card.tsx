@@ -8,10 +8,11 @@ type Props = {
 }
 
 // The box at the top right of the map. It shows what is selected, or the form for something
-// being made. Its contents scroll when they are taller than the map.
+// being made. Its contents scroll when they are taller than the map. On a short window a
+// tall card reaches the map controls in the corner below it, and is drawn over them.
 function Card({ title, onClose, children }: Props) {
     return (
-        <section className="absolute top-3.5 right-3.5 z-10 flex max-h-[calc(100%-28px)] w-card flex-col overflow-hidden rounded-box border border-ink bg-panel shadow-[0_2px_10px_rgb(32_30_24/0.22)]">
+        <section className="absolute top-3.5 right-3.5 z-20 flex max-h-[calc(100%-28px)] w-card flex-col overflow-hidden rounded-box border border-ink bg-panel shadow-[0_2px_10px_rgb(32_30_24/0.22)]">
             <div className="flex h-6.5 flex-none items-center border-b border-ink bg-strip pr-1 pl-2.5">
                 <h2 className="flex-1 font-mono text-label tracking-widest uppercase">{title}</h2>
                 {onClose && (

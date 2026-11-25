@@ -26,15 +26,19 @@ import SettingsPanel from './settings/SettingsPanel.tsx'
 import MeshPanel from './teams/MeshPanel.tsx'
 import TeamCard from './teams/TeamCard.tsx'
 import TeamsPanel from './teams/TeamsPanel.tsx'
+import PlaceWaypoint from './waypoints/PlaceWaypoint.tsx'
+import WaypointCard from './waypoints/WaypointCard.tsx'
+import WaypointsOnMap from './waypoints/WaypointsOnMap.tsx'
+import { useWaypoints, type Waypoint } from './waypoints/waypoints.ts'
 
-// The tools that are greyed, and why: a search area belongs to a mission, and a sector is
-// drawn inside the search area.
+// The tools that are greyed, and why: a search area and a waypoint belong to a mission, and
+// a sector is drawn inside the search area.
 function greyedTools(missionOpen: boolean, hasArea: boolean): Partial<Record<ToolId, string>> | undefined {
   if (!missionOpen) return NO_MISSION
   if (!hasArea) return NO_AREA
   return undefined
 }
-const NO_MISSION = { 'search-area': 'Open a mission first', sector: 'Open a mission first' }
+const NO_MISSION = { 'search-area': 'Open a mission first', sector: 'Open a mission first', waypoint: 'Open a mission first' }
 const NO_AREA = { sector: 'Draw a search area first' }
 
 // The whole screen: the rail down the left edge, the panel its buttons open, and the map
@@ -62,24 +66,42 @@ function App() {
   const greyed = greyedTools(mission !== null, area !== null)
   if (greyed?.[tool]) setTool('select')
 
-  // What is selected: a sector, picked on the map or in the Sectors panel, or a team, picked
-  // in the Groups & Teams panel. One thing is selected at a time, and its card shows while no
-  // drawing tool has a card of its own up.
+  // What is selected: a sector, picked on the map or in the Sectors panel; a team, picked
+  // in the Groups & Teams panel; or what one click on the map's waypoints picked, which is
+  // several when they sit on the same spot. One thing is selected at a time, and its card
+  // shows while no drawing tool has a card of its own up.
   const [selectedSector, setSelectedSector] = useState<number | null>(null)
   const [selectedTeam, setSelectedTeam] = useState<number | null>(null)  // the team's radio
+  const [selectedWaypoints, setSelectedWaypoints] = useState<number[]>([])
   function pickSector(id: number | null) {
     setSelectedSector(id)
     setSelectedTeam(null)
+    setSelectedWaypoints([])
   }
   function pickTeam(id: number) {
     setSelectedTeam(id)
     setSelectedSector(null)
+    setSelectedWaypoints([])
   }
-  const drawing = tool === 'sector' || tool === 'search-area'
-  // The sector whose shape is being edited, from its card's Edit Shape. Picking another
-  // tool ends the editing without saving.
+  function pickWaypoints(ids: number[]) {
+    setSelectedWaypoints(ids)
+    setSelectedSector(null)
+    setSelectedTeam(null)
+  }
+  const drawing = tool === 'sector' || tool === 'search-area' || tool === 'waypoint'
+  // The sector whose shape is being edited, from its card's Edit Shape, or the waypoint
+  // being edited, from its card's Edit. Picking another tool ends the editing without saving.
   const [editingSector, setEditingSector] = useState<number | null>(null)
   if (editingSector !== null && tool !== 'select') setEditingSector(null)
+  const [editingWaypointId, setEditingWaypointId] = useState<number | null>(null)
+  if (editingWaypointId !== null && tool !== 'select') setEditingWaypointId(null)
+  const editingWaypoint = useWaypoints().waypoints.find((waypoint) => waypoint.id === editingWaypointId)
+  const editing = editingSector !== null || editingWaypoint !== undefined
+  // A saved change gives the waypoint a new id, so the one that took its place is selected.
+  function doneEditingWaypoint(saved?: Waypoint) {
+    setEditingWaypointId(null)
+    if (saved) setSelectedWaypoints([saved.id])
+  }
 
   // Pressing the open panel's button closes it; pressing another opens that one in its place.
   function pressRailButton(id: PanelId) {
@@ -147,8 +169,13 @@ function App() {
           <SearchAreaOutline />
           <SectorsOnMap
             selected={selectedSector}
-            onPick={tool === 'select' && editingSector === null ? pickSector : undefined}
+            onPick={tool === 'select' && !editing ? pickSector : undefined}
             hidden={editingSector}
+          />
+          <WaypointsOnMap
+            selected={selectedWaypoints}
+            onPick={tool === 'select' && !editing ? pickWaypoints : undefined}
+            hidden={editingWaypointId}
           />
           {tool === 'measure' && <MeasureTool hintSlot={hintSlot} />}
         </MissionMap>
@@ -167,9 +194,16 @@ function App() {
         ) : selectedSector !== null && !drawing && (
           <SectorCard key={selectedSector} id={selectedSector} onClose={() => setSelectedSector(null)} onEdit={setEditingSector} />
         )}
-        {selectedTeam !== null && editingSector === null && !drawing && (
+        {selectedTeam !== null && !editing && !drawing && (
           <TeamCard id={selectedTeam} onClose={() => setSelectedTeam(null)} />
         )}
+        {/* key: each waypoint edited, and each use of the tool, starts with its own form. */}
+        {editingWaypoint ? (
+          <PlaceWaypoint key={editingWaypoint.id} editing={editingWaypoint} hintSlot={hintSlot} onDone={doneEditingWaypoint} />
+        ) : selectedWaypoints.length > 0 && !drawing && (
+          <WaypointCard ids={selectedWaypoints} onPick={pickWaypoints} onClose={() => setSelectedWaypoints([])} onEdit={setEditingWaypointId} />
+        )}
+        {tool === 'waypoint' && <PlaceWaypoint hintSlot={hintSlot} onDone={() => setTool('select')} />}
         {/* key: picking the other shape starts the tool afresh. */}
         {tool === 'sector' && (
           <DrawSector key={sectorShape} shape={sectorShape} hintSlot={hintSlot} toolSlot={toolSlot} onDone={() => setTool('select')} />

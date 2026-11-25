@@ -52,10 +52,18 @@ test('pressing D, or the tool itself, picks the Draw Sector tool', () => {
     expect(onPick.mock.calls).toEqual([['sector'], ['sector']])
 })
 
-test('the tools run Select, Draw Sector, Draw Search Area, Measure', () => {
+test('pressing W, or the tool itself, picks the Drop Waypoint tool', () => {
+    const onPick = vi.fn()
+    render(<Toolbar tool="select" onPick={onPick} />)
+    fireEvent.keyDown(document.body, { key: 'w' })
+    fireEvent.click(screen.getByRole('button', { name: 'Drop Waypoint' }))
+    expect(onPick.mock.calls).toEqual([['waypoint'], ['waypoint']])
+})
+
+test('the tools run Select, Draw Sector, Draw Search Area, Measure, Drop Waypoint', () => {
     render(<Toolbar tool="select" onPick={() => {}} />)
     expect(screen.getAllByRole('button').map((button) => button.getAttribute('aria-label')))
-        .toEqual(['Select', 'Draw Sector', 'Draw Search Area', 'Measure'])
+        .toEqual(['Select', 'Draw Sector', 'Draw Search Area', 'Measure', 'Drop Waypoint'])
 })
 
 test("the Draw Sector tool's tooltip says a right-click offers the shapes", () => {

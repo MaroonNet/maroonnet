@@ -41,6 +41,7 @@ vi.mock('./map/missionMap.ts', () => ({ useMissionMap: () => fakeMap }))
 // Drawing needs a real map too, so a tool that draws is handed a drawing that does nothing.
 vi.mock('./map/drawRectangle.ts', () => ({ drawRectangle: () => ({ clear() {}, stop() {} }) }))
 vi.mock('./map/drawSector.ts', () => ({ drawSector: () => ({ discard() {}, stop() {}, edit() {} }) }))
+vi.mock('./map/dropPin.ts', () => ({ dropPin: () => ({ clear() {}, stop() {} }) }))
 vi.mock('./map/drawCustomShape.ts', () => ({
     drawCustomShape: () => ({ undo() {}, redo() {}, close() {}, discard() {}, stop() {} }),
 }))
@@ -252,6 +253,26 @@ test('with a search area, picking Draw Sector starts the tool, and its hint line
 
     expect(screen.getByRole('button', { name: 'Draw Sector' }).getAttribute('aria-pressed')).toBe('true')
     expect(screen.getByRole('status').textContent).toBe('Drag on the map to draw a rectangle. Right-click the tool for a custom shape.')
+})
+
+test('the Drop Waypoint tool is greyed until a mission is open', () => {
+    render(<App />)
+    expect(screen.getByRole('button', { name: 'Drop Waypoint' }).getAttribute('aria-disabled')).toBe('true')
+    expect(tooltipOf('Drop Waypoint')).toBe('Drop WaypointOpen a mission first')
+})
+
+test('with a mission open, picking Drop Waypoint starts the tool, with no search area needed', () => {
+    withBearCreek(null)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Drop Waypoint' }))
+
+    expect(screen.getByRole('button', { name: 'Drop Waypoint' }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByRole('status').textContent).toBe('Click the map to drop a waypoint.')
+})
+
+test('the Center on Command Post button sits with the map controls, greyed while there is no command post', () => {
+    render(<App />)
+    expect(screen.getByRole('button', { name: 'Center on Command Post' }).getAttribute('aria-disabled')).toBe('true')
 })
 
 test('picking Custom shape from the Draw Sector menu starts a custom shape, and the tool keeps that shape', () => {

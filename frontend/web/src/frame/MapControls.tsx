@@ -3,6 +3,7 @@ import type { Map as MapLibreMap } from 'maplibre-gl'
 import { useEffect, useState } from 'react'
 import { useMissionMap } from '../map/missionMap.ts'
 import { useSettings, type Units } from '../settings/settings.ts'
+import CenterOnCommandPost from '../waypoints/CenterOnCommandPost.tsx'
 import Legend, { BOX } from './Legend.tsx'
 import { metersPerPixel, scaleBar } from './scaleBar.ts'
 
@@ -32,6 +33,7 @@ function Controls({ map }: { map: MapLibreMap }) {
 
     return (
         <div className="pointer-events-none absolute right-3.5 bottom-11 z-10 flex flex-col items-end gap-2.5">
+            <CenterOnCommandPost map={map} />
             <div className={`flex w-11 flex-col divide-y divide-ink overflow-hidden rounded-box ${BOX}`}>
                 <ZoomButton label="Zoom in" icon={IconPlus} atLimit={view.zoom >= map.getMaxZoom()} onPress={() => map.zoomIn()} />
                 <ZoomButton label="Zoom out" icon={IconMinus} atLimit={view.zoom <= map.getMinZoom()} onPress={() => map.zoomOut()} />

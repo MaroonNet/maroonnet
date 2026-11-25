@@ -1,9 +1,9 @@
-import { IconCheck, IconMarquee2, IconPointer, IconPolygon, IconRuler2, type Icon } from '@tabler/icons-react'
+import { IconCheck, IconMapPinPlus, IconMarquee2, IconPointer, IconPolygon, IconRuler2, type Icon } from '@tabler/icons-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import type { SectorShape } from '../map/drawSector.ts'
 
 // The tools of the toolbar. One is picked at a time.
-export type ToolId = 'select' | 'sector' | 'search-area' | 'measure'
+export type ToolId = 'select' | 'sector' | 'search-area' | 'measure' | 'waypoint'
 
 // key: the keyboard key that picks the tool. tip: what its tooltip shows beside the name,
 // when that is more than the key.
@@ -12,6 +12,7 @@ const TOOLS: { id: ToolId, label: string, key: string, tip?: string, icon: Icon 
     { id: 'sector', label: 'Draw Sector', key: 'D', tip: 'D · right-click for shapes', icon: IconPolygon },
     { id: 'search-area', label: 'Draw Search Area', key: 'A', icon: IconMarquee2 },
     { id: 'measure', label: 'Measure', key: 'M', icon: IconRuler2 },
+    { id: 'waypoint', label: 'Drop Waypoint', key: 'W', icon: IconMapPinPlus },
 ]
 
 // The shapes the Draw Sector tool draws, in its right-click menu.
