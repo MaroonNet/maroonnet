@@ -1,13 +1,14 @@
-import { IconMarquee2, IconPointer, IconRuler2, type Icon } from '@tabler/icons-react'
+import { IconMarquee2, IconPointer, IconPolygon, IconRuler2, type Icon } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 
 // The tools of the toolbar. One is picked at a time.
-export type ToolId = 'select' | 'search-area' | 'measure'
+export type ToolId = 'select' | 'search-area' | 'sector' | 'measure'
 
 // key: the keyboard key that picks the tool, shown in its tooltip.
 const TOOLS: { id: ToolId, label: string, key: string, icon: Icon }[] = [
     { id: 'select', label: 'Select', key: 'V', icon: IconPointer },
     { id: 'search-area', label: 'Draw Search Area', key: 'A', icon: IconMarquee2 },
+    { id: 'sector', label: 'Draw Sector', key: 'S', icon: IconPolygon },
     { id: 'measure', label: 'Measure', key: 'M', icon: IconRuler2 },
 ]
 

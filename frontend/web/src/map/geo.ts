@@ -47,3 +47,32 @@ export function rectangleSize(box: Bounds): { width: number, height: number, are
         area: EARTH_RADIUS ** 2 * east * (Math.sin(radians(box.max_lat)) - Math.sin(radians(box.min_lat))),
     }
 }
+
+// A shape's area on the ground, in square meters. The corners go in order, either way round,
+// and the last joins back to the first. Each corner adds a strip reaching from it down to
+// the equator; the strips outside the shape cancel out (the method mapping libraries such
+// as Turf use).
+export function polygonArea(corners: Position[]): number {
+    let sum = 0
+    for (let i = 0; i < corners.length; i++) {
+        const before = corners[(i + corners.length - 1) % corners.length]
+        const after = corners[(i + 1) % corners.length]
+        sum += radians(after.lon - before.lon) * Math.sin(radians(corners[i].lat))
+    }
+    return Math.abs(sum) * EARTH_RADIUS ** 2 / 2
+}
+
+// The place itself when it is inside the rectangle or on its line, and otherwise the nearest
+// place on the line.
+export function onOrInside(place: Position, box: Bounds): Position {
+    return {
+        lat: Math.min(Math.max(place.lat, box.min_lat), box.max_lat),
+        lon: Math.min(Math.max(place.lon, box.min_lon), box.max_lon),
+    }
+}
+
+// Whether every corner is inside the rectangle. A corner on its line counts as inside, as
+// the backend counts it (backend/sectors/shape.py).
+export function insideBounds(corners: Position[], box: Bounds): boolean {
+    return corners.every(({ lat, lon }) => box.min_lat <= lat && lat <= box.max_lat && box.min_lon <= lon && lon <= box.max_lon)
+}

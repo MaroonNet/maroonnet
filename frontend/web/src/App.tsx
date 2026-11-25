@@ -14,11 +14,20 @@ import { useMission } from './mission/mission.ts'
 import AreaPanel from './searchArea/AreaPanel.tsx'
 import DrawSearchArea from './searchArea/DrawSearchArea.tsx'
 import SearchAreaOutline from './searchArea/SearchAreaOutline.tsx'
-import { useMapOverSearchArea } from './searchArea/searchArea.ts'
+import { useMapOverSearchArea, useSearchArea } from './searchArea/searchArea.ts'
+import DrawSector from './sectors/DrawSector.tsx'
+import SectorsOnMap from './sectors/SectorsOnMap.tsx'
 import SettingsPanel from './settings/SettingsPanel.tsx'
 
-// The tools that are greyed while no mission is open.
-const NEEDS_MISSION = { 'search-area': 'Open a mission first' }
+// The tools that are greyed, and why: a search area belongs to a mission, and a sector is
+// drawn inside the search area.
+function greyedTools(missionOpen: boolean, hasArea: boolean): Partial<Record<ToolId, string>> | undefined {
+  if (!missionOpen) return NO_MISSION
+  if (!hasArea) return NO_AREA
+  return undefined
+}
+const NO_MISSION = { 'search-area': 'Open a mission first', sector: 'Open a mission first' }
+const NO_AREA = { sector: 'Draw a search area first' }
 
 // The whole screen: the rail down the left edge, the panel its buttons open, and the map
 // filling the rest, with the toolbar over its top left corner.
@@ -33,12 +42,14 @@ function App() {
   // state so the tool is drawn again once the spot exists.
   const [hintSlot, setHintSlot] = useState<HTMLElement | null>(null)
   const { mission } = useMission()
+  const { area } = useSearchArea()
 
   useMapOverSearchArea(openPanel !== null)
 
-  // A search area belongs to a mission, so its tool needs one open. If the mission is closed
-  // while the tool is picked, the toolbar goes back to Select.
-  if (!mission && tool === 'search-area') setTool('select')
+  // If the picked tool becomes greyed, as when the mission is closed while it is in use, the
+  // toolbar goes back to Select.
+  const greyed = greyedTools(mission !== null, area !== null)
+  if (greyed?.[tool]) setTool('select')
 
   // Pressing the open panel's button closes it; pressing another opens that one in its place.
   function pressRailButton(id: PanelId) {
@@ -84,15 +95,17 @@ function App() {
       <main className="relative z-0 min-w-0 flex-1">
         <MissionMap hidden={hidden} pickedUses={pickedUses}>
           <SearchAreaOutline />
+          <SectorsOnMap />
           {tool === 'measure' && <MeasureTool hintSlot={hintSlot} />}
         </MissionMap>
         {/* What floats over the map's top left corner. It moves right when a panel opens,
             so the panel does not cover it. */}
         <div className={`absolute top-3.5 left-3.5 z-10 flex flex-col items-start gap-2 ${openPanel ? 'translate-x-panel' : ''}`}>
-          <Toolbar tool={tool} onPick={setTool} greyed={mission ? undefined : NEEDS_MISSION} />
+          <Toolbar tool={tool} onPick={setTool} greyed={greyed} />
           <div ref={setHintSlot} />
         </div>
         {tool === 'search-area' && <DrawSearchArea hintSlot={hintSlot} onDone={() => setTool('select')} />}
+        {tool === 'sector' && <DrawSector hintSlot={hintSlot} onDone={() => setTool('select')} />}
         <MapControls />
       </main>
       <StillRunningBox />

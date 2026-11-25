@@ -8,6 +8,7 @@ import './index.css'
 import App from './App.tsx'
 import MissionProvider from './mission/MissionProvider.tsx'
 import SearchAreaProvider from './searchArea/SearchAreaProvider.tsx'
+import SectorsProvider from './sectors/SectorsProvider.tsx'
 import SettingsProvider from './settings/SettingsProvider.tsx'
 
 createRoot(document.getElementById('root')!).render(
@@ -17,7 +18,9 @@ createRoot(document.getElementById('root')!).render(
         {/* The map's shared board: any component can reach the map (useMissionMap). */}
         <MapProvider>
           <SearchAreaProvider>
-            <App />
+            <SectorsProvider>
+              <App />
+            </SectorsProvider>
           </SearchAreaProvider>
         </MapProvider>
       </MissionProvider>

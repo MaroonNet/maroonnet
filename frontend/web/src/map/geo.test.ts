@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { bearingDegrees, distanceMeters, rectangleSize } from './geo.ts'
+import { bearingDegrees, distanceMeters, insideBounds, onOrInside, polygonArea, rectangleSize } from './geo.ts'
 import { formatBearing, formatLatitude, formatLongitude, formatPosition } from './position.ts'
 
 test('one degree of latitude is 111.2 km', () => {
@@ -27,6 +27,38 @@ test("Arizona07's search area is 25.1 by 25.2 km", () => {
     expect(size.width / 1000).toBeCloseTo(25.1, 1)
     expect(size.height / 1000).toBeCloseTo(25.2, 1)
     expect(size.area / 1_000_000).toBeCloseTo(630.8, 1)  // square kilometers
+})
+
+const ARIZONA07_AREA = { min_lat: 31.3926, min_lon: -110.8083, max_lat: 31.619, max_lon: -110.544 }
+
+test("a shape drawn as the search area's four corners has the search area's area", () => {
+    const { min_lat: s, min_lon: w, max_lat: n, max_lon: e } = ARIZONA07_AREA
+    const corners = [{ lat: s, lon: w }, { lat: n, lon: w }, { lat: n, lon: e }, { lat: s, lon: e }]
+    expect(polygonArea(corners)).toBeCloseTo(rectangleSize(ARIZONA07_AREA).area, -3)
+})
+
+test('the corners may go either way round, and the area is the same', () => {
+    const square = [{ lat: 31.5, lon: -110.7 }, { lat: 31.51, lon: -110.7 }, { lat: 31.51, lon: -110.69 }, { lat: 31.5, lon: -110.69 }]
+    expect(polygonArea([...square].reverse())).toBeCloseTo(polygonArea(square), 3)
+})
+
+test("Arizona07's S7 is 0.55 square kilometers", () => {
+    const s7 = [[31.510046, -110.679325], [31.513835, -110.679272], [31.515188, -110.676638], [31.515278, -110.672002],
+        [31.513925, -110.668209], [31.510948, -110.667893], [31.509280, -110.671791], [31.510633, -110.675585], [31.510588, -110.677481]]
+    // Worked out separately by laying the corners on a flat grid of meters: 0.553 km². A
+    // shape this small is the same on the curved earth to well under a percent.
+    expect(polygonArea(s7.map(([lat, lon]) => ({ lat, lon }))) / 1_000_000).toBeCloseTo(0.553, 2)
+})
+
+test('a point past the search area line is put on the line, at the nearest spot', () => {
+    expect(onOrInside({ lat: 31.5, lon: -110.5 }, ARIZONA07_AREA)).toEqual({ lat: 31.5, lon: -110.544 })   // past the east line
+    expect(onOrInside({ lat: 31.7, lon: -110.9 }, ARIZONA07_AREA)).toEqual({ lat: 31.619, lon: -110.8083 })  // past the north-west corner
+    expect(onOrInside({ lat: 31.5, lon: -110.6 }, ARIZONA07_AREA)).toEqual({ lat: 31.5, lon: -110.6 })      // inside: unchanged
+})
+
+test('a shape is inside the search area when every corner is, the line included', () => {
+    expect(insideBounds([{ lat: 31.3926, lon: -110.8083 }, { lat: 31.5, lon: -110.6 }], ARIZONA07_AREA)).toBe(true)
+    expect(insideBounds([{ lat: 31.39, lon: -110.7 }, { lat: 31.5, lon: -110.6 }], ARIZONA07_AREA)).toBe(false)
 })
 
 test('a position is written in decimal degrees with letters, to four places', () => {

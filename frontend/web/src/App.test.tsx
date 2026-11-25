@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, expect, test, vi } from 'vitest'
 import App from './App.tsx'
 import { MissionContext, type OpenMission } from './mission/mission.ts'
+import { SearchAreaContext, type SearchArea } from './searchArea/searchArea.ts'
 import SettingsProvider from './settings/SettingsProvider.tsx'
 
 // A pretend MapLibre map. It records zoom presses, and a test can move it to another zoom.
@@ -12,6 +13,7 @@ const fakeMap = vi.hoisted(() => {
     return {
         zoomIn: vi.fn(),
         zoomOut: vi.fn(),
+        fitBounds: vi.fn(),  // opening a mission with a search area moves the map over it
         getZoom: () => zoom,
         getMinZoom: () => 0,
         getMaxZoom: () => 17,
@@ -38,6 +40,7 @@ vi.mock('./map/missionMap.ts', () => ({ useMissionMap: () => fakeMap }))
 
 // Drawing needs a real map too, so a tool that draws is handed a drawing that does nothing.
 vi.mock('./map/drawRectangle.ts', () => ({ drawRectangle: () => ({ clear() {}, stop() {} }) }))
+vi.mock('./map/drawSector.ts', () => ({ drawSector: () => ({ discard() {}, stop() {} }) }))
 
 // The style comes from the backend too. This one lists two layer groups and two trail uses.
 vi.mock('./map/mapStyle.ts', () => ({
@@ -178,6 +181,51 @@ test('with a mission open, picking Draw Search Area starts the tool, and its hin
 
     expect(screen.getByRole('button', { name: 'Draw Search Area' }).getAttribute('aria-pressed')).toBe('true')
     expect(screen.getByRole('status').textContent).toBe('Drag on the map to draw the search area.')
+})
+
+const BEAR_CREEK: OpenMission = {
+    id: 'bc', name: 'Bear Creek', time_zone: 'America/Denver', status: 'planning', session: 1,
+    start_time: null, end_time: null, sessions: [], asks_to_continue: false,
+}
+
+// Draws the app with Bear Creek open, and with a search area when one is given.
+function withBearCreek(area: SearchArea | null) {
+    render(
+        <MissionContext value={{ mission: BEAR_CREEK, loadFailed: false, run: async () => '' }}>
+            <SearchAreaContext value={{ area, loadedFor: 'bc', save: async () => '' }}>
+                <App />
+            </SearchAreaContext>
+        </MissionContext>,
+    )
+}
+
+function tooltipOf(name: string): string {
+    fireEvent.mouseEnter(screen.getByRole('button', { name }))
+    return screen.getByRole('tooltip').textContent!
+}
+
+test('the Draw Sector tool is greyed until a mission is open', () => {
+    render(<App />)
+    expect(screen.getByRole('button', { name: 'Draw Sector' }).getAttribute('aria-disabled')).toBe('true')
+    expect(tooltipOf('Draw Sector')).toBe('Draw SectorOpen a mission first')
+})
+
+test('with a mission open and no search area, the Draw Sector tool is still greyed', () => {
+    withBearCreek(null)
+    const tool = screen.getByRole('button', { name: 'Draw Sector' })
+    expect(tool.getAttribute('aria-disabled')).toBe('true')
+    expect(tooltipOf('Draw Sector')).toBe('Draw SectorDraw a search area first')
+    fireEvent.click(tool)
+    expect(screen.queryByRole('status')).toBeNull()  // the tool did not start
+})
+
+test('with a search area, picking Draw Sector starts the tool, and its hint line shows under the toolbar', () => {
+    withBearCreek({ min_lat: 39.9, min_lon: -105.7, max_lat: 40.1, max_lon: -105.5 })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Draw Sector' }))
+
+    expect(screen.getByRole('button', { name: 'Draw Sector' }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByRole('status').textContent).toBe('Drag on the map to draw a sector.')
 })
 
 test('hovering the Select tool shows its name and key, and leaving hides them', () => {
