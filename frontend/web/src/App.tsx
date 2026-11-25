@@ -9,6 +9,7 @@ import { style } from './map/mapStyle.ts'
 import type { StyleMetadata } from './map/styleChoices.ts'
 import MissionPanel from './mission/MissionPanel.tsx'
 import StillRunningBox from './mission/StillRunningBox.tsx'
+import MeasureTool from './measure/MeasureTool.tsx'
 import { useMission } from './mission/mission.ts'
 import AreaPanel from './searchArea/AreaPanel.tsx'
 import DrawSearchArea from './searchArea/DrawSearchArea.tsx'
@@ -83,6 +84,7 @@ function App() {
       <main className="relative z-0 min-w-0 flex-1">
         <MissionMap hidden={hidden} pickedUses={pickedUses}>
           <SearchAreaOutline />
+          {tool === 'measure' && <MeasureTool hintSlot={hintSlot} />}
         </MissionMap>
         {/* What floats over the map's top left corner. It moves right when a panel opens,
             so the panel does not cover it. */}

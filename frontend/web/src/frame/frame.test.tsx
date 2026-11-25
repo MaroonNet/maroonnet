@@ -36,6 +36,14 @@ test('pressing A, or the tool itself, picks the Draw Search Area tool', () => {
     expect(onPick.mock.calls).toEqual([['search-area'], ['search-area']])
 })
 
+test('pressing M, or the tool itself, picks the Measure tool', () => {
+    const onPick = vi.fn()
+    render(<Toolbar tool="select" onPick={onPick} />)
+    fireEvent.keyDown(document.body, { key: 'm' })
+    fireEvent.click(screen.getByRole('button', { name: 'Measure' }))
+    expect(onPick.mock.calls).toEqual([['measure'], ['measure']])
+})
+
 test('a greyed tool is not picked by a press or by its key, and its tooltip says why', () => {
     const onPick = vi.fn()
     render(<Toolbar tool="select" onPick={onPick} greyed={{ 'search-area': 'Open a mission first' }} />)
