@@ -106,10 +106,11 @@ NOW = utc(2026, 11, 20, 23, 30)  # what the clock reads when a test presses a bu
 def clock(monkeypatch):
     """Stops the backend's clock at NOW. A test moves it with clock.set(...)."""
     from mission import lifecycle, next_session
+    from sectors import routes as sector_routes
 
     class Clock:
         def set(self, time: datetime) -> None:
-            for module in (lifecycle, next_session):  # each reads the time through its own utcnow
+            for module in (lifecycle, next_session, sector_routes):  # each reads the time through its own utcnow
                 monkeypatch.setattr(module, "utcnow", lambda: time)
 
     stopped = Clock()

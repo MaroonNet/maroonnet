@@ -3,6 +3,7 @@
 import pytest
 
 from mission.tests.conftest import ARIZONA07_ID, rows
+from sectors.tests.conftest import add_sector
 
 BEAR_CREEK_AREA = {"min_lat": 39.9, "min_lon": -105.7, "max_lat": 40.1, "max_lon": -105.5}
 
@@ -57,6 +58,33 @@ def test_a_paused_or_ended_session_refuses_a_new_search_area(client, open_bear_c
     assert response.status_code == 409
     assert response.json() == {"detail": f"This session is {status}, so nothing in it can be changed."}
     assert rows(path, "SELECT count(*) FROM search_area") == [(0,)]
+
+
+def test_a_new_area_that_holds_every_sector_is_saved(client, open_bear_creek):
+    path = open_bear_creek("active")
+    add_sector(path, 1)  # the square 40.0 to 40.05 N, 105.6 to 105.55 W
+    hugging = {"min_lat": 40.0, "min_lon": -105.6, "max_lat": 40.05, "max_lon": -105.55}  # its corners on the line
+
+    assert client.put("/api/mission/search-area", json=hugging).status_code == 200
+
+
+@pytest.mark.parametrize(("sectors", "line"), [
+    ([1], "S1 would be outside this search area."),
+    ([1, 2], "S1 and S2 would be outside this search area."),
+    ([1, 2, 3], "S1, S2 and S3 would be outside this search area."),
+])
+def test_a_new_area_that_would_leave_a_sector_outside_is_refused(client, open_bear_creek, sectors, line):
+    path = open_bear_creek("active")
+    client.put("/api/mission/search-area", json=BEAR_CREEK_AREA)
+    for sector_id in sectors:
+        add_sector(path, sector_id)
+    north_half = {"min_lat": 40.02, "min_lon": -105.7, "max_lat": 40.1, "max_lon": -105.5}  # cuts the squares
+
+    response = client.put("/api/mission/search-area", json=north_half)
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": line}
+    assert client.get("/api/mission/search-area").json() == BEAR_CREEK_AREA
 
 
 def test_arizona07_ended_keeps_its_search_area(client, arizona07):

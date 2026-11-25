@@ -1,17 +1,19 @@
 """The web routes for the search area.
 
     GET /api/mission/search-area   the open mission's search area, or nothing
-    PUT /api/mission/search-area   set it; this replaces the one that was there
+    PUT /api/mission/search-area   set it; this replaces the one that was there, and is
+                                   refused while a saved sector would fall outside it
 """
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, model_validator
 from sqlmodel import Session, select
 
 from mission.open_mission import changeable_session, mission_session
 from missiondb.models import Mission, SearchArea
+from sectors.routes import sectors_outside
 
 router = APIRouter(prefix="/api")
 
@@ -47,6 +49,9 @@ def get_search_area(db: Session = Depends(mission_session)) -> SearchAreaFacts |
 
 @router.put("/mission/search-area")
 def put_search_area(new: SearchAreaFacts, db: Session = Depends(changeable_session)) -> SearchAreaFacts:
+    # The search area is the sectors' boundary, so it cannot shrink past a saved sector.
+    if outside := sectors_outside(db, new):
+        raise HTTPException(409, f"{names(outside)} would be outside this search area.")
     # A mission keeps one search area, so a new rectangle is written over the row that is
     # there. Only a mission with none yet gets a new row.
     area = db.exec(select(SearchArea)).first()
@@ -57,3 +62,8 @@ def put_search_area(new: SearchAreaFacts, db: Session = Depends(changeable_sessi
     db.add(area)
     db.commit()
     return new
+
+
+def names(items: list[str]) -> str:
+    """A list as a sentence writes it: "S1", "S1 and S2", "S1, S2 and S3"."""
+    return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} and {items[-1]}"
