@@ -122,10 +122,10 @@ test('pressing Area opens the Search Area panel', () => {
 
 test('a greyed button opens nothing and says "Not available yet"', () => {
     render(<App />)
-    const people = screen.getByRole('button', { name: 'People' })
-    expect(people.title).toBe('Not available yet')
-    expect(people.getAttribute('aria-disabled')).toBe('true')
-    fireEvent.click(people)
+    const alerts = screen.getByRole('button', { name: 'Alerts' })
+    expect(alerts.title).toBe('Not available yet')
+    expect(alerts.getAttribute('aria-disabled')).toBe('true')
+    fireEvent.click(alerts)
     expect(screen.queryByRole('heading')).toBeNull()
 })
 

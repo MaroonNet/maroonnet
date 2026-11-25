@@ -10,7 +10,7 @@ export type PanelId = 'mission' | 'teams' | 'people' | 'sectors' | 'area' | 'ale
 // built: the button's panel exists. The rest are greyed out until their panel is built.
 const BUTTONS: { id: PanelId, label: string, icon: Icon, built: boolean }[] = [
     { id: 'teams', label: 'Groups & Teams', icon: IconUsersGroup, built: false },
-    { id: 'people', label: 'People', icon: IconUser, built: false },
+    { id: 'people', label: 'People', icon: IconUser, built: true },
     { id: 'sectors', label: 'Sectors', icon: IconPolygon, built: true },
     { id: 'area', label: 'Area', icon: IconMarquee2, built: true },
     { id: 'alerts', label: 'Alerts', icon: IconAlertTriangle, built: false },

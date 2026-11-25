@@ -11,6 +11,7 @@ import MissionPanel from './mission/MissionPanel.tsx'
 import StillRunningBox from './mission/StillRunningBox.tsx'
 import MeasureTool from './measure/MeasureTool.tsx'
 import { useMission } from './mission/mission.ts'
+import PeoplePanel from './people/PeoplePanel.tsx'
 import AreaPanel from './searchArea/AreaPanel.tsx'
 import DrawSearchArea from './searchArea/DrawSearchArea.tsx'
 import SearchAreaOutline from './searchArea/SearchAreaOutline.tsx'
@@ -80,6 +81,11 @@ function App() {
       {openPanel === 'mission' && (
         <Panel title="Mission" onClose={() => setOpenPanel(null)}>
           <MissionPanel />
+        </Panel>
+      )}
+      {openPanel === 'people' && (
+        <Panel title="People" onClose={() => setOpenPanel(null)}>
+          <PeoplePanel />
         </Panel>
       )}
       {openPanel === 'sectors' && (
