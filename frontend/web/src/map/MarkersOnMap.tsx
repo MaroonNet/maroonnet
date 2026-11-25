@@ -10,7 +10,7 @@ import KindMarker from '../waypoints/KindMarker.tsx'
 import { kindOf } from '../waypoints/kinds.ts'
 import { useWaypoints, type Waypoint } from '../waypoints/waypoints.ts'
 import { useMissionMap } from './missionMap.ts'
-import { stacksOf, stackWords, type Stack } from './stacks.ts'
+import { CLICK_DISTANCE, LABEL_DISTANCE, stacksOf, stackWords, type Stack } from './stacks.ts'
 
 type Props = {
     selectedTeam: number | null         // the radio of the selected team, drawn with a ring
@@ -27,12 +27,14 @@ type Placed = { lat: number, lon: number, waypoint?: Waypoint, team?: Radio }
 
 // The markers on the map. A waypoint is its kind's pin, its point on its place, with its
 // name to the right of its head. A team is a dot in its group's color, centered on its
-// radio's newest position, with its pill to the right ("G2 R3"). Markers on the same spot
-// of the screen, of either sort, are one stack: one label counts them, in place of a name
-// or a pill, and a click picks them all, so a card can ask
-// which is meant. It is drawn inside the map (a child of MissionMap). The markers are page
-// elements laid over the map, so they sit above the sectors and the tracks. A sort unticked
-// in the Layers panel has no markers, so a stack counts and picks only what shows.
+// radio's newest position, with its pill to the right ("G2 R3"). Markers within
+// CLICK_DISTANCE of each other on screen, of either sort, cover each other, so they are one
+// stack: one count in place of their names and pills, and a click on any of them picks them
+// all, so a card can ask which is meant. A marker clicked on its own shows its name or pill
+// only when no other marker is within LABEL_DISTANCE, where they would run into each other.
+// It is drawn inside the map (a child of MissionMap). The markers are page elements laid over
+// the map, so they sit above the sectors and the tracks. A sort unticked in the Layers panel
+// has no markers, so a stack counts and picks only what shows.
 function MarkersOnMap({ selectedTeam, selectedWaypoint, onPick, hidden = null, teamsLayer = SHOWN, waypointsLayer = SHOWN }: Props) {
     const map = useMissionMap()
     const { waypoints } = useWaypoints()
@@ -45,7 +47,7 @@ function MarkersOnMap({ selectedTeam, selectedWaypoint, onPick, hidden = null, t
         ...shownTeams.map((team) => ({ lat: team.last_position!.lat, lon: team.last_position!.lon, team })),
     ]
 
-    // How close two markers are on screen depends on the zoom, so the stacks are worked out
+    // How close two markers are on screen depends on the zoom, so the groups are worked out
     // again each time the map zooms.
     const [, setZooms] = useState(0)
     useEffect(() => {
@@ -54,20 +56,24 @@ function MarkersOnMap({ selectedTeam, selectedWaypoint, onPick, hidden = null, t
         map.on('zoom', onZoom)
         return () => { map.off('zoom', onZoom) }
     }, [map])
-    const stacks = map ? stacksOf(placed, map) : placed.map((one) => [one])
+    const groups = (distance: number) => map ? stacksOf(placed, map, distance) : placed.map((one) => [one])
+    // The markers with another marker within LABEL_DISTANCE: they show no name or pill.
+    const crowded = new Set(groups(LABEL_DISTANCE).filter((group) => group.length > 1).flat())
 
-    return stacks.flatMap((stack) => {
+    return groups(CLICK_DISTANCE).flatMap((stack) => {
         const picked: Stack = {
             teams: stack.flatMap((one) => one.team ? [one.team.id] : []),
             waypoints: stack.flatMap((one) => one.waypoint ? [one.waypoint.id] : []),
         }
         return stack.map((one, place) => {
             const { waypoint, team } = one
-            // The last of a stack is drawn on top, and carries the stack's label. A lone
-            // waypoint's label is its name; a lone team's is its pill.
+            // The last of a stack is drawn on top, and carries the stack's count. A marker on
+            // its own shows its name or pill, unless it is crowded.
             const top = place === stack.length - 1
-            const label = !top ? '' : stack.length > 1 ? stackWords(picked.teams.length, picked.waypoints.length) : waypoint?.name ?? ''
-            const pill = top && stack.length === 1 && team
+            const alone = stack.length === 1 && !crowded.has(one)
+            const count = stack.length > 1 && top ? stackWords(picked.teams.length, picked.waypoints.length) : ''
+            const label = alone ? waypoint?.name ?? '' : count
+            const pill = alone && team
             const ringed = waypoint ? waypoint.id === selectedWaypoint : team!.id === selectedTeam
             return (
                 <Marker

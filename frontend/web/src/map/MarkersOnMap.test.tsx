@@ -142,10 +142,11 @@ test('waypoints on the same spot share one label that counts them, so their name
 
 test('zooming out brings more waypoints onto one spot, and the labels follow', () => {
     draw({ waypoints: ARIZONA07 })
-    // A tenth of the scale: the command post, the start point and LZ 1 are now within 50 px
-    // of each other. The boot prints are still 160 px from the finds.
+    // A tenth of the scale: the command post and the start point, 14 px apart, are now one
+    // stack. LZ 1 and the boot prints are clicked on their own but are within 75 px of it, so
+    // they show no names. The finds are still 160 px from the boot prints.
     act(() => pretend.zoomTo(10_000))
-    expect(labels()).toEqual(['', '', '3 waypoints', 'Boot prints', '', '2 waypoints'])
+    expect(labels()).toEqual(['', '2 waypoints', '', '', '', '2 waypoints'])
 })
 
 test('while another tool is in use a marker takes no clicks, so they reach the map', () => {
@@ -213,6 +214,37 @@ test('teams and waypoints on the same spot are one stack, and a click picks them
 test('one team on one waypoint is counted in the singular', () => {
     draw({ waypoints: ARIZONA07.slice(0, 1), radios: RADIOS.slice(0, 1) })
     expect(labels()).toEqual(['', '1 team · 1 waypoint'])
+})
+
+// On the pretend map a ten-thousandth of a degree is 10 px.
+
+test('teams 40 px apart are each clicked on their own, and show neither a count nor their pills', () => {
+    const onPick = vi.fn()
+    const markers = draw({ radios: [team(1, 1, 31.4, -110.6), team(2, 1, 31.4, -110.5996)], onPick })
+    expect(labels()).toEqual(['', ''])
+    fireEvent.click(markers[0])
+    expect(onPick).toHaveBeenLastCalledWith({ teams: [1], waypoints: [] })
+    fireEvent.click(markers[1])
+    expect(onPick).toHaveBeenLastCalledWith({ teams: [2], waypoints: [] })
+})
+
+test('teams less than 25 px apart are one stack: one click picks both, and the top one carries their count', () => {
+    const onPick = vi.fn()
+    const markers = draw({ radios: [team(1, 1, 31.4, -110.6), team(2, 1, 31.4, -110.5998)], onPick })  // 20 px
+    expect(labels()).toEqual(['', '2 teams'])
+    fireEvent.click(markers[0])
+    expect(onPick).toHaveBeenLastCalledWith({ teams: [1, 2], waypoints: [] })
+})
+
+test('a stack keeps its count among other markers, and a team clicked on its own beside it shows nothing', () => {
+    // Teams 1 and 2 are 20 px apart; team 3 is 50 px past team 2.
+    draw({ radios: [team(1, 1, 31.4, -110.6), team(2, 1, 31.4, -110.5998), team(3, 2, 31.4, -110.5993)] })
+    expect(labels()).toEqual(['', '2 teams', ''])
+})
+
+test('teams 75 px or more apart each show their own pill', () => {
+    draw({ radios: [team(1, 1, 31.4, -110.6), team(2, 1, 31.4, -110.5992)] })  // 80 px
+    expect(labels()).toEqual(['G1R1', 'G1R2'])
 })
 
 // The Layers panel's two rows
