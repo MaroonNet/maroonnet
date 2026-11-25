@@ -29,6 +29,7 @@ import SectorCard from './sectors/SectorCard.tsx'
 import SectorsPanel from './sectors/SectorsPanel.tsx'
 import SectorsOnMap from './sectors/SectorsOnMap.tsx'
 import SettingsPanel from './settings/SettingsPanel.tsx'
+import SetupBar from './setup/SetupBar.tsx'
 import MeshPanel from './teams/MeshPanel.tsx'
 import TeamCard from './teams/TeamCard.tsx'
 import TeamsPanel from './teams/TeamsPanel.tsx'
@@ -201,10 +202,13 @@ function App() {
         {/* What floats over the map's top left corner. It moves right when a panel opens,
             so the panel does not cover it. */}
         <div className={`absolute top-3.5 left-3.5 z-10 flex flex-col items-start gap-2 ${openPanel ? 'translate-x-panel' : ''}`}>
-          <Toolbar tool={tool} onPick={setTool} greyed={greyed} sectorShape={sectorShape} onPickShape={setSectorShape}>
-            {/* "contents": the spot takes no room of its own; what is put in it sits in the row. */}
-            <div ref={setToolSlot} className="contents" />
-          </Toolbar>
+          <div className="flex items-start gap-2">
+            <Toolbar tool={tool} onPick={setTool} greyed={greyed} sectorShape={sectorShape} onPickShape={setSectorShape}>
+              {/* "contents": the spot takes no room of its own; what is put in it sits in the row. */}
+              <div ref={setToolSlot} className="contents" />
+            </Toolbar>
+            <SetupBar />
+          </div>
           <div ref={setHintSlot} />
         </div>
         {tool === 'search-area' && <DrawSearchArea hintSlot={hintSlot} onDone={() => setTool('select')} />}
