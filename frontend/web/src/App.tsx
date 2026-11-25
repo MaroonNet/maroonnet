@@ -26,6 +26,7 @@ import SettingsPanel from './settings/SettingsPanel.tsx'
 import MeshPanel from './teams/MeshPanel.tsx'
 import TeamCard from './teams/TeamCard.tsx'
 import TeamsPanel from './teams/TeamsPanel.tsx'
+import TracksOnMap from './teams/TracksOnMap.tsx'
 import PlaceWaypoint from './waypoints/PlaceWaypoint.tsx'
 import WaypointCard from './waypoints/WaypointCard.tsx'
 import WaypointsOnMap from './waypoints/WaypointsOnMap.tsx'
@@ -172,6 +173,7 @@ function App() {
             onPick={tool === 'select' && !editing ? pickSector : undefined}
             hidden={editingSector}
           />
+          <TracksOnMap selected={selectedTeam} />
           <WaypointsOnMap
             selected={selectedWaypoints}
             onPick={tool === 'select' && !editing ? pickWaypoints : undefined}

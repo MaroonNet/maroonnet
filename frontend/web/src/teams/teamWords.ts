@@ -21,6 +21,11 @@ export const GROUP_COLORS = [
 ]
 export const groupColor = (groupId: number) => GROUP_COLORS[(groupId - 1) % GROUP_COLORS.length]
 
+// The color of a team on the map, and of the track it walked: its group's, or grey for a
+// team in no group.
+export const NO_GROUP_COLOR = '#6b6b6b'
+export const teamColor = (groupId: number | null) => groupId === null ? NO_GROUP_COLOR : groupColor(groupId)
+
 export const KIND_LABELS: Record<RadioKind, string> = {
     searcher: 'Searcher', command_post: 'Command post', relay: 'Relay', aerial: 'Aerial',
 }

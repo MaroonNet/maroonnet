@@ -1,6 +1,7 @@
 import type { MissionStatus, OpenMission } from '../mission/mission.ts'
 import type { Person } from '../people/people.ts'
 import type { Group, Radio } from './teams.ts'
+import type { Track } from './tracks.ts'
 
 // A made-up mission for the team tests, shaped like Arizona07: eight radios, three groups.
 //
@@ -56,6 +57,19 @@ export const RADIOS: Radio[] = [
     { id: 6, node_num: 1016025774, kind: 'relay', people: [], group_id: null, last_position: null },
     { id: 7, node_num: 2603508945, kind: 'searcher', people: [carrier(18)], group_id: 2, last_position: at('2025-04-14T11:17:00Z') },
     { id: 8, node_num: 1564517367, kind: 'command_post', people: [carrier(16)], group_id: null, last_position: at('2025-04-14T11:20:00Z') },
+]
+
+// Two tracks: Radio 1 walked in Group 1, then in Group 3; Radio 4 in Group 2, then in none.
+// A piece after the first starts on the last point of the piece before it.
+export const TRACKS: Track[] = [
+    { radio_id: 1, pieces: [
+        { group_id: 1, points: [[-110.677, 31.506], [-110.675, 31.508], [-110.673, 31.509]] },
+        { group_id: 3, points: [[-110.673, 31.509], [-110.677, 31.506]] },
+    ] },
+    { radio_id: 4, pieces: [
+        { group_id: 2, points: [[-110.677, 31.506], [-110.68, 31.504]] },
+        { group_id: null, points: [[-110.68, 31.504], [-110.677, 31.506]] },
+    ] },
 ]
 
 export const GROUPS: Group[] = [
