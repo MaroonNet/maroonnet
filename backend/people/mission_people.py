@@ -7,13 +7,14 @@ for each stretch they carried a radio. A row with no end time is still going.
 A person is tied to the roster by first and last name only, until missiondb has a roster id.
 """
 
+import re
 from datetime import datetime
 from typing import Literal
 
 from fastapi import HTTPException
 from pydantic import BaseModel
 from sqlalchemy import and_, func, or_
-from sqlmodel import Session, select
+from sqlmodel import Session, delete, select
 
 from missiondb.models import (
     Mission, MissionStatus, Searcher, SearcherCheckin, SearcherTeamAssignment, Team, TeamGroupAssignment,
@@ -49,7 +50,21 @@ class PersonFacts(BaseModel):
     group_id: int | None        # the group that radio is in
     shares: list[str]           # the names of the others carrying the same radio
     last_on_radio: bool         # nobody else carries their radio
+    placeholder: bool           # a stand-in such as "Searcher #1"
+    can_remove: bool            # a placeholder that has never carried a radio
     history: list[Event]        # oldest first
+
+
+# A placeholder is an ordinary row with the first name "Searcher" and a last name such as
+# "#3". missiondb has no mark for one, so the name is all that tells it apart.
+PLACEHOLDER_FIRST_NAME = "Searcher"
+PLACEHOLDER_LAST_NAME = re.compile(r"#(\d+)")
+
+
+def placeholder_number(searcher: Searcher) -> int | None:
+    """The 3 of "Searcher #3", or None for a real person."""
+    number = PLACEHOLDER_LAST_NAME.fullmatch(searcher.lname)
+    return int(number.group(1)) if number and searcher.fname == PLACEHOLDER_FIRST_NAME else None
 
 
 # Where two events have the same time, the one that ends something comes first.
@@ -142,6 +157,8 @@ def facts(db: Session, searcher: Searcher, at: datetime | None, known: Roster) -
         in_roster=bool(matches), roster_id=one.id if one else None, phone=one.phone if one else None,
         team_id=team.team_id if team else None, node_num=team.node_num if team else None, group_id=group_id,
         shares=shares, last_on_radio=team is not None and not shares,
+        placeholder=placeholder_number(searcher) is not None,
+        can_remove=placeholder_number(searcher) is not None and not carries,
         history=history,
     )
 
@@ -233,3 +250,71 @@ def check_out(db: Session, searcher_id: int) -> PersonFacts:
                 in_group.to_time = now
     db.commit()
     return facts_of(db, searcher)
+
+
+def add_placeholder(db: Session) -> PersonFacts:
+    """Adds the next "Searcher #n", checked in. The number is the next after the highest
+    in this mission."""
+    numbers = [placeholder_number(searcher) or 0 for searcher in db.exec(select(Searcher))]
+    searcher = Searcher(fname=PLACEHOLDER_FIRST_NAME, lname=f"#{max(numbers, default=0) + 1}")
+    db.add(searcher)
+    db.flush()  # gives the new row its id
+    db.add(SearcherCheckin(searcher_id=searcher.searcher_id, in_time=utcnow()))
+    db.commit()
+    return facts_of(db, searcher)
+
+
+def replace_placeholder(db: Session, searcher_id: int, roster_id: int) -> PersonFacts:
+    """Gives a placeholder's row a roster person's name. The row is the same row, so the
+    person has the placeholder's radio, check-in and history. Nothing records that the row
+    was once a placeholder."""
+    searcher = find(db, searcher_id)
+    if placeholder_number(searcher) is None:
+        raise HTTPException(409, f"{full_name(searcher)} is not a placeholder.")
+    person = roster.get_person(roster_id)
+    # Each roster person of this name may have one row; see check_in_from_roster.
+    rows = named(db, person.first_name, person.last_name)
+    if len(rows) >= len(roster.people_named(person.first_name, person.last_name)):
+        raise HTTPException(409, f"{person.first_name} {person.last_name} is already in this mission.")
+    searcher.fname, searcher.lname = person.first_name, person.last_name
+    db.commit()
+    return facts_of(db, searcher)
+
+
+def remove_placeholder(db: Session, searcher_id: int) -> None:
+    """Deletes a placeholder and its check-ins. One that has carried a radio is part of
+    that radio's history, so it stays and is checked out like anyone else."""
+    searcher = find(db, searcher_id)
+    if placeholder_number(searcher) is None:
+        raise HTTPException(409, "Only a placeholder can be removed.")
+    carried = db.exec(select(SearcherTeamAssignment).where(SearcherTeamAssignment.searcher_id == searcher_id)).first()
+    if carried:
+        raise HTTPException(409, f"{full_name(searcher)} has carried a radio, so it cannot be removed. Check it out instead.")
+    db.exec(delete(SearcherCheckin).where(SearcherCheckin.searcher_id == searcher_id))
+    db.delete(searcher)
+    db.commit()
+
+
+def save_to_roster(db: Session, searcher_id: int) -> PersonFacts:
+    """Adds a mission person to the roster, by their first and last name. The mission file
+    has no initial or phone, so those are filled in later from Manage Roster."""
+    searcher = find(db, searcher_id)
+    if placeholder_number(searcher) is not None:
+        raise HTTPException(409, "A placeholder cannot be saved to the roster.")
+    roster.add_person(roster.PersonDetails(first_name=searcher.fname, last_name=searcher.lname))
+    return facts_of(db, searcher)
+
+
+def checked_in_as(db: Session, first_name: str, last_name: str) -> bool:
+    """Whether someone of this name is checked in now."""
+    return any(open_checkin(db, row.searcher_id) for row in named(db, first_name, last_name))
+
+
+def rename(db: Session, old: RosterPerson, new: roster.PersonDetails) -> None:
+    """A roster person's name was changed: their row in this session follows, when it is
+    plain which row that is. A paused or ended session is left as it is."""
+    status = db.exec(select(Mission.status)).one()
+    rows = named(db, old.first_name, old.last_name)
+    if status in (MissionStatus.PLANNING, MissionStatus.ACTIVE) and len(rows) == 1:
+        rows[0].fname, rows[0].lname = new.first_name, new.last_name
+        db.commit()
