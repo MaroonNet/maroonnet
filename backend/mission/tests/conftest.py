@@ -109,10 +109,11 @@ def clock(monkeypatch):
     from people import mission_people
     from sectors import life as sector_life, routes as sector_routes
     from teams import teams
+    from waypoints import routes as waypoint_routes
 
     class Clock:
         def set(self, time: datetime) -> None:
-            for module in (lifecycle, next_session, sector_routes, sector_life, mission_people, teams):  # each reads the time through its own utcnow
+            for module in (lifecycle, next_session, sector_routes, sector_life, mission_people, teams, waypoint_routes):  # each reads the time through its own utcnow
                 monkeypatch.setattr(module, "utcnow", lambda: time)
 
     stopped = Clock()
