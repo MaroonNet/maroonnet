@@ -3,6 +3,7 @@
 import json
 import subprocess
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
@@ -10,7 +11,9 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session
 
 from mapdb import spm
-from mapdb.routes import router
+from mapdb.routes import DEFAULT_PREDICTIONS_DIR, predictions_dir, router
+from mission.open_mission import close_mission, open_folder
+from mission.tests.conftest import empty_file, make_mission  # noqa: F401  (pytest finds these helpers by name)
 from missiondb import create_db_engine, get_session, init_db
 from missiondb.models import SearchGroup, SearchSector, SearchSectorPoint, SectorStatus
 
@@ -201,6 +204,26 @@ def test_update_says_so_when_the_database_is_not_a_mission(client, prediction, t
     client.app.dependency_overrides[get_session] = sessions
     response = client.post(f"/api/spm/predictions/{prediction}/update", json={"pod": 0.5})
     assert response.status_code == 503 and "MISSIONDB_URL" in response.json()["detail"]
+
+
+def test_predictions_are_kept_with_the_open_mission(make_mission, tmp_path, monkeypatch):
+    monkeypatch.delenv("SPM_PREDICTIONS_DIR", raising=False)
+    shared = Path(DEFAULT_PREDICTIONS_DIR).resolve()
+    assert predictions_dir() == shared  # no mission open: the shared folder
+    bear_creek = make_mission("bear-creek/session-01.sqlite3").parent
+    open_folder(bear_creek)
+    assert predictions_dir() == (bear_creek / "predictions").resolve()
+    # another mission keeps its own, so a map made in one does not show in the other
+    elk_ridge = make_mission("elk-ridge/session-01.sqlite3", name="Elk Ridge",
+                             mission_id="99999999-2222-3333-4444-555555555555").parent
+    open_folder(elk_ridge)
+    assert predictions_dir() == (elk_ridge / "predictions").resolve()
+    # the variable still wins
+    monkeypatch.setenv("SPM_PREDICTIONS_DIR", str(tmp_path / "elsewhere"))
+    assert predictions_dir() == (tmp_path / "elsewhere").resolve()
+    monkeypatch.delenv("SPM_PREDICTIONS_DIR")
+    close_mission()
+    assert predictions_dir() == shared
 
 
 def test_an_unreadable_model_file_is_left_out(spm_root):

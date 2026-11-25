@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.exc import OperationalError
 from sqlmodel import Session
 
+from mission.open_mission import get_open_mission
 from missiondb import get_session
 from missiondb.models import SectorStatus
 
@@ -68,7 +69,14 @@ class UpdateRequest(BaseModel):
 
 
 def predictions_dir() -> Path:
-    return Path(os.environ.get(PREDICTIONS_SETTING) or DEFAULT_PREDICTIONS_DIR).resolve()
+    """The variable wins. Without it a prediction is kept with the open mission, in a
+    `predictions` folder inside the mission's folder, so each mission shows only its own;
+    with no mission open, the shared folder."""
+    if override := os.environ.get(PREDICTIONS_SETTING):
+        return Path(override).resolve()
+    if (opened := get_open_mission()) is not None:
+        return (opened.folder / "predictions").resolve()
+    return Path(DEFAULT_PREDICTIONS_DIR).resolve()
 
 
 def read_overlay(folder: Path, prediction_id: str) -> dict | None:
