@@ -181,6 +181,7 @@ test('a mission in planning has Start Mission, which makes it active', async () 
     await openMissionPanel()
 
     press('Start Mission')
+    press('Start Anyway')  // nothing is set up, so it asks first (startMission.test.tsx)
 
     await waitFor(() => expect(fact('Status')).toBe('Active'))
     expect(sent).toEqual([{ method: 'POST', address: '/api/mission/start' }])
@@ -360,6 +361,7 @@ test('a refused change is shown in the panel and nothing switches', async () => 
     await openMissionPanel()
 
     press('Start Mission')
+    press('Start Anyway')
 
     expect((await screen.findByRole('alert')).textContent).toBe('Only a mission in planning can be started.')
     expect(fact('Status')).toBe('Planning')

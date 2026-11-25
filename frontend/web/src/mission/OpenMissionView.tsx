@@ -5,12 +5,13 @@ import {
     changeTimeZone, closeMission, dayAndSession, endMission, endSession, reopenMission, resumeSession,
     startMission, startNextSession, STATUS_LABELS, useMission, type OpenMission,
 } from './mission.ts'
+import { useSetupSteps } from '../setup/setupSteps.ts'
 import { FIELD } from './MissionList.tsx'
 import MissionSummary from './MissionSummary.tsx'
 import { formatDateTime, formatElapsed, TIME_ZONES, zoneLabel } from './missionTime.ts'
 
 // The questions this view asks before it does something.
-type Question = 'end-session' | 'end-mission' | 'next-session'
+type Question = 'start' | 'end-session' | 'end-mission' | 'next-session'
 
 // What the Mission panel shows for the open mission: its facts, and the buttons its status
 // allows. Every change goes to the backend first, and the facts change when it has saved.
@@ -26,6 +27,10 @@ function OpenMissionView({ mission }: { mission: OpenMission }) {
         setFailure(await run(request))
         setBusy(false)
     }
+
+    // What setup has not done, one line each. Start Mission asks about these first and
+    // never refuses: with none, it starts at once.
+    const notDone = (useSetupSteps() ?? []).flatMap((step) => step.missing)
 
     const { status, session, time_zone: zone } = mission
     const ended = status === 'ended'
@@ -61,7 +66,9 @@ function OpenMissionView({ mission }: { mission: OpenMission }) {
 
             <div className="flex flex-col gap-2 px-4 pt-4">
                 {status === 'planning' && (
-                    <Button look="dark" disabled={busy} onClick={() => send(startMission())}>Start Mission</Button>
+                    <Button look="dark" disabled={busy} onClick={() => notDone.length > 0 ? setAsking('start') : send(startMission())}>
+                        Start Mission
+                    </Button>
                 )}
                 {status === 'active' && (
                     <Button look="dark" disabled={busy} onClick={() => setAsking('end-session')}>End Session</Button>
@@ -82,6 +89,20 @@ function OpenMissionView({ mission }: { mission: OpenMission }) {
                 <Button disabled={busy} onClick={() => send(closeMission())}>Close Mission</Button>
             </div>
 
+            {asking === 'start' && (
+                <ConfirmBox
+                    title="Start the mission?"
+                    choices={[
+                        { label: 'Cancel', onPress: () => setAsking(null) },
+                        { label: 'Start Anyway', main: true, onPress: () => send(startMission()) },
+                    ]}
+                >
+                    Setup is not finished:
+                    <ul className="mt-1 list-disc pl-4">
+                        {notDone.map((line) => <li key={line}>{line}</li>)}
+                    </ul>
+                </ConfirmBox>
+            )}
             {asking === 'end-session' && (
                 <ConfirmBox
                     title={`End Session ${session}?`}
