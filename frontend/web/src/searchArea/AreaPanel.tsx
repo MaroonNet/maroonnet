@@ -53,11 +53,13 @@ function Facts({ children }: { children: ReactNode }) {
     return <dl className="grid grid-cols-[3.25rem_1fr] items-baseline gap-x-3 gap-y-1.5 px-4 pt-1">{children}</dl>
 }
 
+// A fact: its label, then its figure in the same font and size, darker. Digits of one width
+// keep the figures lined up.
 function Fact({ label, children }: { label: string, children: ReactNode }) {
     return (
         <>
             <dt className="font-medium text-muted">{label}</dt>
-            <dd className="font-mono text-figure">{children}</dd>
+            <dd className="tabular-nums">{children}</dd>
         </>
     )
 }

@@ -59,7 +59,7 @@ function OpenMissionView({ mission }: { mission: OpenMission }) {
                 <Fact label="Started">{mission.start_time ? formatDateTime(mission.start_time, zone) : 'Not started'}</Fact>
                 {mission.end_time && <Fact label="Ended">{formatDateTime(mission.end_time, zone)}</Fact>}
                 {status === 'active' && mission.start_time && (
-                    <Fact label="Elapsed"><span className="font-mono text-figure"><Elapsed since={mission.start_time} /></span></Fact>
+                    <Fact label="Elapsed"><span className="tabular-nums"><Elapsed since={mission.start_time} /></span></Fact>
                 )}
             </dl>
             <MissionSummary />

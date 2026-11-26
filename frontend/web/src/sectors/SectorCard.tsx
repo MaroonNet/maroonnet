@@ -208,7 +208,7 @@ function Fact({ label, children }: { label: string, children: ReactNode }) {
     return (
         <>
             <dt className="font-medium text-muted">{label}</dt>
-            <dd className="font-mono text-figure">{children}</dd>
+            <dd className="tabular-nums">{children}</dd>
         </>
     )
 }

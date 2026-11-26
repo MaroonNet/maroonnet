@@ -121,7 +121,7 @@ function PersonView({ person, canChange, onBack }: Props) {
             <ul aria-label="History">
                 {person.history.map((event, index) => (
                     <li key={index} className="flex gap-3 px-4 py-0.5">
-                        <span className="w-16 flex-none font-mono text-muted">{formatTime(event.time, zone)}</span>
+                        <span className="w-16 flex-none tabular-nums text-muted">{formatTime(event.time, zone)}</span>
                         <span>{historyLine(event)}</span>
                     </li>
                 ))}

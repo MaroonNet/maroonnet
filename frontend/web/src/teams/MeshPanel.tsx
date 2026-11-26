@@ -39,7 +39,7 @@ function MeshPanel() {
                         <div className="flex items-baseline gap-2">
                             <span className="text-input">{radioLabel(radio.id)}</span>
                             <span className="flex-1 font-mono text-label tracking-widest text-muted uppercase">{KIND_LABELS[radio.kind]}</span>
-                            <span className="font-mono text-muted" title="Node number">{radio.node_num}</span>
+                            <span className="tabular-nums text-muted" title="Node number">{radio.node_num}</span>
                         </div>
                         {/* Each fact breaks onto the next line whole, never in its middle. */}
                         <div className="font-medium text-muted">

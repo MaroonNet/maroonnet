@@ -56,7 +56,7 @@ function LayersPanel({ groups, hidden, setHidden, missionLayers, setMissionLayer
                                     onChange={(e) => change(id, { opacity: Number(e.target.value) / 100 })}
                                     className="min-w-0 flex-1 accent-ink"
                                 />
-                                <span className="w-10 flex-none text-right font-mono text-figure">{percent}%</span>
+                                <span className="w-10 flex-none text-right tabular-nums">{percent}%</span>
                             </div>
                         )}
                     </div>

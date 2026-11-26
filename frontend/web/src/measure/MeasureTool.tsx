@@ -86,7 +86,7 @@ function MeasureTool({ hintSlot }: Props) {
             {fixed && end && (
                 // The label sits to the right of the end point, and lets clicks through to the map.
                 <Marker latitude={end.lat} longitude={end.lon} anchor="left" offset={[10, 0]} style={{ pointerEvents: 'none' }}>
-                    <div className="rounded-control bg-ink px-2 py-1 font-mono text-input font-medium whitespace-nowrap text-panel">{figure}</div>
+                    <div className="rounded-control bg-ink px-2 py-1 text-input font-medium whitespace-nowrap text-panel tabular-nums">{figure}</div>
                 </Marker>
             )}
         </>

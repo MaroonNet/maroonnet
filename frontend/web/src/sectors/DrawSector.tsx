@@ -145,9 +145,9 @@ function DrawSector({ shape, hintSlot, toolSlot, onDone }: Props) {
                 <Card title="New Sector">
                     <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5">
                         <dt className="font-medium text-muted">Points</dt>
-                        <dd className="font-mono text-figure">{corners.length}</dd>
+                        <dd className="tabular-nums">{corners.length}</dd>
                         <dt className="font-medium text-muted">Area</dt>
-                        <dd className="font-mono text-figure">{size}</dd>
+                        <dd className="tabular-nums">{size}</dd>
                     </dl>
                     {/* role="alert" has a screen reader read the line out when it appears. */}
                     {failure && <p role="alert" className="pt-2 font-medium text-red">{failure}</p>}

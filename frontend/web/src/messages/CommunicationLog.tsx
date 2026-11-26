@@ -159,8 +159,8 @@ function Line({ line, zone, open, onPress }: LineProps) {
     const Chevron = open ? IconChevronDown : IconChevronRight
     const parts = (
         <>
-            <span className="w-15 flex-none font-mono text-muted">{formatTime(line.time, zone)}</span>
-            {from && <span className="flex-none font-mono font-bold">{from}</span>}
+            <span className="w-15 flex-none tabular-nums text-muted">{formatTime(line.time, zone)}</span>
+            {from && <span className="flex-none font-bold">{from}</span>}
             <span className={`flex-none rounded-full border border-ink px-2 font-mono text-label tracking-wider uppercase ${type === 'evidence' ? 'bg-ink text-panel' : ''}`}>
                 {typeLabel(type)}
             </span>
@@ -191,7 +191,7 @@ function Radios({ radios, zone }: { radios: Receipt[], zone: string }) {
         <ul ref={list} aria-label="Radios of this message" className="mx-2.5 mb-1 ml-20 flex flex-col gap-0.5 border-l-2 border-ink/20 py-0.5 pl-2.5">
             {radios.map((radio) => (
                 <li key={radio.radio_id} className="flex items-baseline gap-2.5">
-                    <span className="w-16 flex-none font-mono font-bold">{radioLabel(radio.radio_id)}</span>
+                    <span className="w-16 flex-none font-bold">{radioLabel(radio.radio_id)}</span>
                     <span className="font-mono text-label text-muted">{receipt(radio.ack_time, zone)}</span>
                 </li>
             ))}
@@ -205,7 +205,7 @@ const GREYED = 'Not available yet'
 function SendBox() {
     return (
         <div className="flex h-9 flex-none border-t border-ink">
-            <select disabled aria-label="Send to" title={GREYED} className="flex-none border-r border-ink px-2.5 font-mono font-bold opacity-40">
+            <select disabled aria-label="Send to" title={GREYED} className="flex-none border-r border-ink px-2.5 font-bold opacity-40">
                 <option>To</option>
             </select>
             <input

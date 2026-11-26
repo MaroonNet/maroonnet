@@ -71,7 +71,7 @@ function Legend() {
                             <li key={standing} className="flex items-center gap-2" title={HOW[standing]}>
                                 <span aria-hidden className="h-3.5 w-5 flex-none border-2" style={SWATCHES[standing]} />
                                 <span className="flex-1">{STATUS_LABELS[standing]}</span>
-                                <span className="font-mono text-figure">{sectorCount(standing)}</span>
+                                <span className="tabular-nums">{sectorCount(standing)}</span>
                             </li>
                         ))}
                     </ul>
@@ -81,7 +81,7 @@ function Legend() {
                             <li key={kind.code} className="flex items-center gap-2">
                                 <KindMarker kind={kind.code} small />
                                 <span className="flex-1">{kind.label}</span>
-                                <span className="font-mono text-figure">{waypointCount(kind.code)}</span>
+                                <span className="tabular-nums">{waypointCount(kind.code)}</span>
                             </li>
                         ))}
                     </ul>

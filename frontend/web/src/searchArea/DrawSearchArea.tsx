@@ -90,13 +90,13 @@ function DrawSearchArea({ hintSlot, onDone }: Props) {
                 <Card title="New Search Area">
                     <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5">
                         <dt className="font-medium text-muted">Width</dt>
-                        <dd className="font-mono text-figure">{formatDistance(size.width, units)}</dd>
+                        <dd className="tabular-nums">{formatDistance(size.width, units)}</dd>
                         <dt className="font-medium text-muted">Height</dt>
-                        <dd className="font-mono text-figure">{formatDistance(size.height, units)}</dd>
+                        <dd className="tabular-nums">{formatDistance(size.height, units)}</dd>
                         <dt className="font-medium text-muted">Area</dt>
-                        <dd className="font-mono text-figure">{formatArea(size.area, units)}</dd>
+                        <dd className="tabular-nums">{formatArea(size.area, units)}</dd>
                         <dt className="font-medium text-muted">Sectors</dt>
-                        <dd className="font-mono text-figure">{sectors.length - outside.length} inside</dd>
+                        <dd className="tabular-nums">{sectors.length - outside.length} inside</dd>
                     </dl>
                     {outside.length > 0 && (
                         <p className="pt-2 font-medium text-red">

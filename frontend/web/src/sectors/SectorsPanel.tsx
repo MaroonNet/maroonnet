@@ -37,7 +37,7 @@ function SectorsPanel({ selected, onPick }: Props) {
                         onClick={() => onPick(sector.id)}
                         className={`flex w-full cursor-pointer items-baseline gap-3 px-4 py-1.5 text-left ${sector.id === selected ? 'bg-strip' : 'hover:bg-strip'}`}
                     >
-                        <span className="w-8 font-mono text-figure">{sector.name}</span>
+                        <span className="w-8 tabular-nums">{sector.name}</span>
                         <span className="flex flex-col">
                             <span>{statusLabel(sector)}</span>
                             <span className="font-medium text-muted">{sectorLine(sector, mission.time_zone)}</span>

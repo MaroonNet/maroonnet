@@ -33,7 +33,7 @@ function MissionSummary() {
                 <dt className={LABEL}>Sectors</dt><dd>{sectors.length}</dd>
                 <dt className={LABEL}>Waypoints</dt><dd>{waypoints.length}</dd>
                 <dt className={LABEL}>Command post</dt>
-                <dd className={post ? 'font-mono' : 'font-medium text-muted'}>{post ? formatPosition(post) : 'Not placed'}</dd>
+                <dd className={post ? 'tabular-nums' : 'font-medium text-muted'}>{post ? formatPosition(post) : 'Not placed'}</dd>
             </dl>
             {sectors.length > 0 && (
                 <table className="mt-3 w-full text-left">
@@ -51,10 +51,10 @@ function MissionSummary() {
                             const group = sector.group_id ?? sector.completed_by
                             return (
                                 <tr key={sector.id} className="border-t border-ink/10">
-                                    <td className="py-1 font-mono text-figure">{sector.name}</td>
+                                    <td className="py-1 tabular-nums">{sector.name}</td>
                                     <td className="py-1">{statusLabel(sector)}</td>
                                     <td className={`py-1 ${group === null ? 'font-medium text-muted' : ''}`}>{group === null ? 'None' : groupLabel(group)}</td>
-                                    <td className="py-1 text-right font-mono text-figure">{formatArea(polygonArea(sector.corners), units)}</td>
+                                    <td className="py-1 text-right tabular-nums">{formatArea(polygonArea(sector.corners), units)}</td>
                                 </tr>
                             )
                         })}

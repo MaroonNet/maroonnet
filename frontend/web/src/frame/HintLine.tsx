@@ -8,7 +8,7 @@ type Props = {
 function HintLine({ text, figure }: Props) {
     return (
         <div role="status" className="rounded-control bg-ink px-3 py-1.5 text-panel">
-            {figure && <span className="mr-2 font-mono opacity-70">{figure}</span>}
+            {figure && <span className="mr-2 tabular-nums opacity-70">{figure}</span>}
             {text}
         </div>
     )

@@ -100,7 +100,7 @@ function PlaceWaypoint({ hintSlot, editing, onDone }: Props) {
             {createPortal(<KindMarker kind={kind} pin ringed />, pinElement)}
             {position && (
                 <Card title={editing ? 'Edit Waypoint' : 'New Waypoint'}>
-                    <p className="font-mono text-figure">{formatPosition(position)}</p>
+                    <p className="tabular-nums">{formatPosition(position)}</p>
                     <div className="flex flex-col gap-2.5 pt-2.5">
                         <Field label="Kind">
                             <select value={kind} onChange={(event) => setKind(event.target.value)} className={FIELD}>
