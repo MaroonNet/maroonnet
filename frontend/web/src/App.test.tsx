@@ -225,10 +225,11 @@ const BEAR_CREEK: OpenMission = {
     start_time: null, end_time: null, sessions: [], asks_to_continue: false,
 }
 
-// Draws the app with Bear Creek open, and with a search area when one is given.
-function withBearCreek(area: SearchArea | null) {
+// Draws the app with Bear Creek open, and with a search area when one is given. status: where
+// its session stands; planning unless a test says.
+function withBearCreek(area: SearchArea | null, status: OpenMission['status'] = 'planning') {
     render(
-        <MissionContext value={{ mission: BEAR_CREEK, loadFailed: false, run: async () => '' }}>
+        <MissionContext value={{ mission: { ...BEAR_CREEK, status }, loadFailed: false, run: async () => '' }}>
             <SearchAreaContext value={{ area, loadedFor: 'bc', save: async () => '' }}>
                 <App />
             </SearchAreaContext>
@@ -263,6 +264,29 @@ test('with a search area, picking Draw Sector starts the tool, and its hint line
 
     expect(screen.getByRole('button', { name: 'Draw Sector' }).getAttribute('aria-pressed')).toBe('true')
     expect(screen.getByRole('status').textContent).toBe('Drag on the map to draw a rectangle. Right-click the tool for a custom shape.')
+})
+
+const BEAR_CREEK_AREA: SearchArea = { min_lat: 39.9, min_lon: -105.7, max_lat: 40.1, max_lon: -105.5 }
+const ADDING_TOOLS = ['Draw Search Area', 'Draw Sector', 'Drop Waypoint']
+const greyedTool = (name: string) => screen.getByRole('button', { name }).getAttribute('aria-disabled') === 'true'
+
+test('while a session is paused, the search area, sectors and waypoints cannot be added, and the tools say why', () => {
+    withBearCreek(BEAR_CREEK_AREA, 'paused')
+    expect(ADDING_TOOLS.map(greyedTool)).toEqual([true, true, true])
+    expect(tooltipOf('Drop Waypoint')).toBe('Drop WaypointResume or start a session first')
+    fireEvent.click(screen.getByRole('button', { name: 'Drop Waypoint' }))
+    expect(screen.queryByRole('status')).toBeNull()  // the tool did not start
+})
+
+test('once the mission has ended, the search area, sectors and waypoints cannot be added', () => {
+    withBearCreek(BEAR_CREEK_AREA, 'ended')
+    expect(ADDING_TOOLS.map(greyedTool)).toEqual([true, true, true])
+    expect(tooltipOf('Draw Sector')).toBe('Draw SectorThe mission has ended')
+})
+
+test('while the mission is active, the search area, sectors and waypoints can be added', () => {
+    withBearCreek(BEAR_CREEK_AREA, 'active')
+    expect(ADDING_TOOLS.map(greyedTool)).toEqual([false, false, false])
 })
 
 test('the Drop Waypoint tool is greyed until a mission is open', () => {

@@ -15,7 +15,7 @@ import CommunicationLog from './messages/CommunicationLog.tsx'
 import MissionPanel from './mission/MissionPanel.tsx'
 import StillRunningBox from './mission/StillRunningBox.tsx'
 import MeasureTool from './measure/MeasureTool.tsx'
-import { useMission } from './mission/mission.ts'
+import { useMission, type MissionStatus } from './mission/mission.ts'
 import PeoplePanel from './people/PeoplePanel.tsx'
 import HeatmapOnMap from './probability/HeatmapOnMap.tsx'
 import AreaPanel from './searchArea/AreaPanel.tsx'
@@ -38,14 +38,20 @@ import PlaceWaypoint from './waypoints/PlaceWaypoint.tsx'
 import WaypointCard from './waypoints/WaypointCard.tsx'
 import { useWaypoints, type Waypoint } from './waypoints/waypoints.ts'
 
-// The tools that are greyed, and why: a search area and a waypoint belong to a mission, and
-// a sector is drawn inside the search area.
-function greyedTools(missionOpen: boolean, hasArea: boolean): Partial<Record<ToolId, string>> | undefined {
-  if (!missionOpen) return NO_MISSION
+// The tools that are greyed, and why: a search area, a sector and a waypoint are added to a
+// mission that is being planned or is active, and a sector is drawn inside the search area.
+// status: the open mission's; none when no mission is open.
+function greyedTools(status: MissionStatus | null, hasArea: boolean): Partial<Record<ToolId, string>> | undefined {
+  if (status === null) return NO_MISSION
+  if (status === 'paused') return PAUSED
+  if (status === 'ended') return ENDED
   if (!hasArea) return NO_AREA
   return undefined
 }
-const NO_MISSION = { 'search-area': 'Open a mission first', sector: 'Open a mission first', waypoint: 'Open a mission first' }
+const adding = (why: string) => ({ 'search-area': why, sector: why, waypoint: why })
+const NO_MISSION = adding('Open a mission first')
+const PAUSED = adding('Resume or start a session first')
+const ENDED = adding('The mission has ended')
 const NO_AREA = { sector: 'Draw a search area first' }
 
 // The whole screen: the rail down the left edge, the panel its buttons open, and the map
@@ -70,9 +76,9 @@ function App() {
 
   useOpeningView(openPanel !== null)
 
-  // If the picked tool becomes greyed, as when the mission is closed while it is in use, the
-  // toolbar goes back to Select.
-  const greyed = greyedTools(mission !== null, area !== null)
+  // If the picked tool becomes greyed, as when the mission is closed or its session ended
+  // while it is in use, the toolbar goes back to Select.
+  const greyed = greyedTools(mission?.status ?? null, area !== null)
   if (greyed?.[tool]) setTool('select')
 
   // What is selected: a sector, picked on the map or in the Sectors panel; a team, picked
