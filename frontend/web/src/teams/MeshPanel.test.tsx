@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, expect, test } from 'vitest'
 import { MissionContext, type OpenMission } from '../mission/mission.ts'
 import { PeopleContext } from '../people/people.ts'
@@ -18,45 +18,54 @@ function show(mission: OpenMission | null = arizona()) {
 }
 
 const rows = (name: string) => within(screen.getByRole('list', { name })).getAllByRole('listitem').map((row) => row.textContent)
+const arrow = (radio: number) => screen.getByRole('button', { name: `Details of Radio ${radio}` })
 
-test('the command post radio and the relays are listed first, in their own set', () => {
+test('the searcher radios come first, each with its group and the time of its last position', () => {
     show()
-    expect(screen.getByText('Command post and relays · 2')).toBeTruthy()
-    expect(rows('Command post and relays')).toEqual([
-        'Radio 8Command post1564517367Ellen Brandt · No group · Last position 4:20 am',
-        'Radio 6Relay1016025774Nobody · No group · No position yet',
-    ])
-})
-
-test('the searcher radios follow, each with who carries it, its group and its newest position', () => {
-    show()
-    expect(screen.getByText('Searcher radios · 5')).toBeTruthy()
+    expect(screen.getAllByRole('heading').map((heading) => heading.textContent)).toEqual(['Searcher radios · 5', 'Command post and relays · 2'])
     expect(rows('Searcher radios')).toEqual([
-        'Radio 1Searcher3663644600Marcus Ibarra, Tessa Lindqvist · Group 1 · Last position 4:19 am',
-        'Radio 2Searcher1128083228Priya Raman · Group 1 · Last position 4:18 am',
-        'Radio 4Searcher2134581666Diego Alas · No group · No position yet',
-        'Radio 5Searcher3876229574Nobody · No group · No position yet',
-        'Radio 7Searcher2603508945Ana Morales · Group 2 · Last position 4:17 am',
+        'Radio 1Group 14:19 am', 'Radio 2Group 14:18 am', 'Radio 4No group–', 'Radio 5No group–', 'Radio 7Group 24:17 am',
     ])
 })
 
-test('a radio carried by more than two people counts the rest', () => {
-    const crowded = RADIOS.map((radio) => radio.id === 1
-        ? { ...radio, people: [...radio.people, { id: 3, name: 'Owen Whitfield', placeholder: false }, { id: 5, name: 'Dale Kowalski', placeholder: false }] }
-        : radio)
-    render(
-        <MissionContext value={{ mission: arizona(), loadFailed: false, run: async () => '' }}>
-            <PeopleContext value={{ roster: [], people: PEOPLE, radios: crowded, groups: GROUPS, run: async () => '' }}>
-                <MeshPanel />
-            </PeopleContext>
-        </MissionContext>,
-    )
-    expect(rows('Searcher radios')[0]).toBe('Radio 1Searcher3663644600Marcus Ibarra, Tessa Lindqvist +2 · Group 1 · Last position 4:19 am')
+test('the command post radio and the relays follow in their own set, each with its kind', () => {
+    show()
+    expect(rows('Command post and relays')).toEqual(['Radio 8Command post4:20 am', 'Radio 6Relay–'])
 })
 
-test('the panel shows no radio health and nothing to press', () => {
+test("each set's columns are labeled, so the time reads as the last position", () => {
     show()
-    expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.getAllByText('Last position')).toHaveLength(2)
+    expect(screen.getByText('Group')).toBeTruthy()
+    expect(screen.getByText('Kind')).toBeTruthy()
+})
+
+test("a radio's arrow shows who carries it, one name per line, and its node number, and hides them again", () => {
+    show()
+    expect(arrow(1).getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(arrow(1))
+    expect(arrow(1).getAttribute('aria-expanded')).toBe('true')
+    const radio1 = within(screen.getByRole('list', { name: 'Searcher radios' }).firstElementChild as HTMLElement)
+    expect(radio1.getByText('Carried by')).toBeTruthy()
+    expect(radio1.getByText('Marcus Ibarra')).toBeTruthy()
+    expect(radio1.getByText('Tessa Lindqvist')).toBeTruthy()
+    expect(radio1.getByText('Node')).toBeTruthy()
+    expect(radio1.getByText('3663644600')).toBeTruthy()
+    fireEvent.click(arrow(1))
+    expect(screen.queryByText('Marcus Ibarra')).toBeNull()
+})
+
+test('the details of a radio nobody carries say so', () => {
+    show()
+    fireEvent.click(arrow(6))
+    expect(screen.getByText('Nobody')).toBeTruthy()
+    expect(screen.getByText('1016025774')).toBeTruthy()
+})
+
+test("the panel shows no radio health, and its only buttons open a radio's details", () => {
+    show()
+    expect(screen.getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual(
+        [1, 2, 4, 5, 7, 8, 6].map((radio) => `Details of Radio ${radio}`))
     expect(screen.queryByText(/batt|heard|in contact/i)).toBeNull()
 })
 
