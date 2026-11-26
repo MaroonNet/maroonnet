@@ -1,8 +1,10 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { useState } from 'react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { MissionContext, type MissionStatus, type OpenMission } from '../mission/mission.ts'
 import { PeopleContext, type Person, type RosterPerson } from './people.ts'
 import PeoplePanel from './PeoplePanel.tsx'
+import { BY_LAST_NAME, type PeopleSort } from './peopleWords.ts'
 
 afterEach(() => {
     cleanup()
@@ -60,28 +62,58 @@ function pretendBackend(refuse: Record<string, string> = {}) {
     return sent
 }
 
+// The panel's sort is held outside it, by the app; here this box holds it.
+function SortedPanel() {
+    const [sort, setSort] = useState<PeopleSort>(BY_LAST_NAME)
+    return <PeoplePanel sort={sort} onSort={setSort} />
+}
+
 function show(mission: OpenMission | null = arizona(), people: Person[] = PEOPLE) {
     const run = async (request: Promise<unknown>) => request.then(() => '', (error: Error) => error.message)
     return render(
         <MissionContext value={{ mission, loadFailed: false, run: async () => '' }}>
             <PeopleContext value={{ roster: ROSTER, people: mission ? people : [], radios: [], groups: [], run }}>
-                <PeoplePanel />
+                <SortedPanel />
             </PeopleContext>
         </MissionContext>,
     )
 }
 
 const list = (name: string) => within(screen.getByRole('list', { name }))
+const rowsOf = (name: string) => list(name).getAllByRole('listitem').map((row) => row.textContent)
+const header = (name: string) => screen.getByRole('button', { name })
 
 // The panel's lists.
 
-test('the panel lists the people checked in, with what each carries', () => {
+test('the people checked in are a table of first name, last name, radio and group, sorted by last name', () => {
     pretendBackend()
     show()
     expect(screen.getByText('Checked in · 4')).toBeTruthy()
-    expect(list('Checked in').getAllByRole('listitem').map((row) => row.textContent)).toEqual([
-        'Ellen BrandtRadio 8 · No group', 'Naomi FeldNo radio', 'Marcus IbarraRadio 1 · Group 1', 'Searcher #1Placeholder',
-    ])
+    expect(header('Sort by last name').getAttribute('aria-pressed')).toBe('true')
+    expect(['first name', 'radio', 'group'].map((column) => header(`Sort by ${column}`).getAttribute('aria-pressed'))).toEqual(['false', 'false', 'false'])
+    // A dash for no radio or no group; the placeholder after everyone.
+    expect(rowsOf('Checked in')).toEqual(['EllenBrandtR8–', 'NaomiFeld––', 'MarcusIbarraR1G1', 'Searcher#1––'])
+})
+
+test('a column header sorts the table by that column, and pressing it again turns the order around', () => {
+    pretendBackend()
+    show()
+    fireEvent.click(header('Sort by first name'))
+    expect(header('Sort by first name').getAttribute('aria-pressed')).toBe('true')
+    expect(rowsOf('Checked in')).toEqual(['EllenBrandtR8–', 'MarcusIbarraR1G1', 'NaomiFeld––', 'Searcher#1––'])
+    fireEvent.click(header('Sort by first name'))
+    expect(rowsOf('Checked in')).toEqual(['NaomiFeld––', 'MarcusIbarraR1G1', 'EllenBrandtR8–', 'Searcher#1––'])
+    // Another column starts A to Z again; those carrying no radio stay at the end.
+    fireEvent.click(header('Sort by radio'))
+    expect(rowsOf('Checked in')).toEqual(['MarcusIbarraR1G1', 'EllenBrandtR8–', 'NaomiFeld––', 'Searcher#1––'])
+})
+
+test('the people not checked in follow the name the table is sorted by', () => {
+    pretendBackend()
+    show()
+    expect(rowsOf('Not checked in')).toEqual(['Wes HallamChecked out 1:10 amCheck In', 'Mei TanakaNot yet this sessionCheck In'])
+    fireEvent.click(header('Sort by first name'))
+    expect(rowsOf('Not checked in')).toEqual(['Mei TanakaNot yet this sessionCheck In', 'Wes HallamChecked out 1:10 amCheck In'])
 })
 
 test('people who are in the mission and not checked in have their own list', () => {

@@ -17,6 +17,7 @@ import StillRunningBox from './mission/StillRunningBox.tsx'
 import MeasureTool from './measure/MeasureTool.tsx'
 import { useMission, type MissionStatus } from './mission/mission.ts'
 import PeoplePanel from './people/PeoplePanel.tsx'
+import { BY_LAST_NAME } from './people/peopleWords.ts'
 import HeatmapOnMap from './probability/HeatmapOnMap.tsx'
 import AreaPanel from './searchArea/AreaPanel.tsx'
 import DrawSearchArea from './searchArea/DrawSearchArea.tsx'
@@ -65,6 +66,8 @@ function App() {
   const [hidden, setHidden] = useState<string[]>([])  // the layer groups the user has hidden
   // The same for the mission layers: whether each shows, and how solid it is drawn.
   const [missionLayers, setMissionLayers] = useState(AS_OPENED)
+  // And for how the People panel's table is sorted.
+  const [peopleSort, setPeopleSort] = useState(BY_LAST_NAME)
   // The spot under the toolbar where the tool in use draws its hint line, and the spot at the
   // toolbar's end where it puts buttons of its own. They are kept as state so the tool is
   // drawn again once the spots exist.
@@ -141,7 +144,7 @@ function App() {
       )}
       {openPanel === 'people' && (
         <Panel title="People" onClose={() => setOpenPanel(null)}>
-          <PeoplePanel />
+          <PeoplePanel sort={peopleSort} onSort={setPeopleSort} />
         </Panel>
       )}
       {openPanel === 'sectors' && (

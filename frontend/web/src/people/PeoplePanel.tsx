@@ -1,22 +1,40 @@
+import { IconChevronDown, IconChevronUp } from '@tabler/icons-react'
 import { useState } from 'react'
 import Button from '../frame/Button.tsx'
 import ConfirmBox from '../frame/ConfirmBox.tsx'
 import { FIELD, HEADING } from '../mission/MissionList.tsx'
 import { useMission } from '../mission/mission.ts'
 import { formatTime } from '../mission/missionTime.ts'
+import { groupMapName, mapName } from '../teams/teamWords.ts'
 import ManageRoster from './ManageRoster.tsx'
 import { checkIn, saveToRoster, usePeople, type Person } from './people.ts'
-import { inOrder, matches, personLine, personName } from './peopleWords.ts'
+import { matches, personName, sortPeople, type PeopleSort } from './peopleWords.ts'
 import PersonView from './PersonView.tsx'
 
 const NOTE = 'px-4 pt-3 font-medium text-muted'  // a line said in place of a list
 
-// What the People panel shows: the people checked in to the open mission with what each
-// carries, then those who are in the mission and not checked in (carried from the last
-// session, or checked out during this one), each with a Check In button. Pressing a name
-// opens that person's view. The Manage Roster button opens the dialog, which works with
-// no mission open too.
-function PeoplePanel() {
+// The table's columns, each a way to sort it: what its header says, and what it sorts by.
+const COLUMNS: { by: PeopleSort['by'], label: string, words: string }[] = [
+    { by: 'first', label: 'First', words: 'first name' },
+    { by: 'last', label: 'Last', words: 'last name' },
+    { by: 'radio', label: 'Radio', words: 'radio' },
+    { by: 'group', label: 'Group', words: 'group' },
+]
+const TABLE = 'grid grid-cols-[1fr_1.15fr_2.75rem_2.75rem] gap-x-2'  // the columns' widths
+const NONE = '–'  // in the Radio or Group column: no radio, or no group
+
+type Props = {
+    sort: PeopleSort                    // how the table is sorted; the app keeps it while the panel is closed
+    onSort: (sort: PeopleSort) => void  // a column header was pressed
+}
+
+// What the People panel shows: the people checked in to the open mission, as a table of
+// first name, last name, radio and group. Pressing a column header sorts the table by that
+// column, and pressing it again turns the order around. Then those who are in the mission
+// and not checked in (carried from the last session, or checked out during this one), in
+// the table's name order, each with a Check In button. Pressing a person opens their view.
+// The Manage Roster button opens the dialog, which works with no mission open too.
+function PeoplePanel({ sort, onSort }: Props) {
     const { mission } = useMission()
     const { people, run } = usePeople()
     const [rosterOpen, setRosterOpen] = useState(false)
@@ -29,9 +47,10 @@ function PeoplePanel() {
 
     // Only a session in planning or active can be changed.
     const canChange = mission?.status === 'planning' || mission?.status === 'active'
-    const shown = inOrder(people.filter((person) => matches(personName(person), search)))
-    const present = shown.filter((person) => person.checked_in)
-    const away = shown.filter((person) => !person.checked_in)
+    const shown = people.filter((person) => matches(personName(person), search))
+    const present = sortPeople(shown.filter((person) => person.checked_in), sort)
+    // Someone not checked in carries nothing, so this list follows only the table's name order.
+    const away = sortPeople(shown.filter((person) => !person.checked_in), { by: sort.by === 'first' ? 'first' : 'last', reversed: false })
     const viewed = people.find((person) => person.id === selected)
 
     async function checkInPerson(person: Person) {
@@ -77,6 +96,27 @@ function PeoplePanel() {
                     {present.length > 0 && (
                         <>
                             <h3 className={HEADING}>Checked in · {present.length}</h3>
+                            <div className={`${TABLE} px-4 pb-1`}>
+                                {COLUMNS.map(({ by, label, words }) => {
+                                    const active = sort.by === by
+                                    return (
+                                        <button
+                                            key={by}
+                                            type="button"
+                                            aria-label={`Sort by ${words}`}
+                                            aria-pressed={active}
+                                            title={active ? 'Reverse the order' : `Sort by ${words}`}
+                                            onClick={() => onSort({ by, reversed: active ? !sort.reversed : false })}
+                                            className={`flex cursor-pointer items-center gap-0.5 text-left font-mono text-label tracking-widest uppercase ${active ? 'text-ink' : 'text-muted'}`}
+                                        >
+                                            {label}
+                                            {active && (sort.reversed
+                                                ? <IconChevronDown size={11} stroke={2} aria-hidden />
+                                                : <IconChevronUp size={11} stroke={2} aria-hidden />)}
+                                        </button>
+                                    )
+                                })}
+                            </div>
                             <ul aria-label="Checked in">
                                 {present.map((person) => (
                                     <li key={person.id}>
@@ -84,10 +124,12 @@ function PeoplePanel() {
                                             type="button"
                                             aria-label={personName(person)}
                                             onClick={() => setSelected(person.id)}
-                                            className="flex w-full cursor-pointer items-baseline gap-2 px-4 py-1.5 text-left hover:bg-strip"
+                                            className={`${TABLE} w-full cursor-pointer items-baseline px-4 py-1.5 text-left hover:bg-strip`}
                                         >
-                                            <span className="min-w-0 flex-1 truncate text-input">{personName(person)}</span>
-                                            <span className="flex-none font-medium text-muted">{personLine(person)}</span>
+                                            <span className="truncate text-input">{person.first_name}</span>
+                                            <span className="truncate text-input">{person.last_name}</span>
+                                            <span className="font-medium text-muted">{person.team_id === null ? NONE : mapName(person.team_id)}</span>
+                                            <span className="font-medium text-muted">{person.group_id === null ? NONE : groupMapName(person.group_id)}</span>
                                         </button>
                                     </li>
                                 ))}

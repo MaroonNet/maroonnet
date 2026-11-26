@@ -22,6 +22,38 @@ export function inOrder(people: Person[]): Person[] {
         || a.first_name.localeCompare(b.first_name))
 }
 
+// How the People panel's table is sorted: by which column, and whether the order is turned
+// around. It starts by last name, A to Z.
+export type PeopleSort = { by: 'first' | 'last' | 'radio' | 'group', reversed: boolean }
+export const BY_LAST_NAME: PeopleSort = { by: 'last', reversed: false }
+
+const text = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true })
+// A missing number (no radio, no group) comes after every number.
+const number = (a: number | null, b: number | null) => (a ?? Infinity) - (b ?? Infinity) || 0
+const byLastName = (a: Person, b: Person) => text(a.last_name, b.last_name) || text(a.first_name, b.first_name)
+const placeholdersAfter = (a: Person, b: Person) => Number(a.placeholder) - Number(b.placeholder)
+const COMPARE: Record<PeopleSort['by'], (a: Person, b: Person) => number> = {
+    last: byLastName,
+    first: (a, b) => text(a.first_name, b.first_name) || text(a.last_name, b.last_name),
+    radio: (a, b) => number(a.team_id, b.team_id) || placeholdersAfter(a, b) || byLastName(a, b),
+    group: (a, b) => number(a.group_id, b.group_id) || number(a.team_id, b.team_id) || placeholdersAfter(a, b) || byLastName(a, b),
+}
+// Who stays at the end whichever way the table is turned: the placeholders when sorting by
+// name, and the people with no radio, or in no group, when sorting by those.
+const AT_END: Record<PeopleSort['by'], (person: Person) => boolean> = {
+    last: (person) => person.placeholder,
+    first: (person) => person.placeholder,
+    radio: (person) => person.team_id === null,
+    group: (person) => person.group_id === null,
+}
+
+// The people in the table's order. Those at the end are in A to Z order among themselves.
+export function sortPeople(people: Person[], { by, reversed }: PeopleSort): Person[] {
+    const atEnd = AT_END[by]
+    const rest = people.filter((person) => !atEnd(person)).sort(COMPARE[by])
+    return [...(reversed ? rest.reverse() : rest), ...people.filter(atEnd).sort(COMPARE[by])]
+}
+
 // Whether a name holds what was typed in the search box. Capitals do not matter.
 export function matches(name: string, search: string): boolean {
     return name.toLowerCase().includes(search.trim().toLowerCase())
@@ -54,13 +86,6 @@ export function checkedInRosterIds(roster: RosterPerson[], people: Person[]): Se
 // The labels the demo uses in lists: "Radio 4", "Group 2".
 export const radioLabel = (teamId: number) => `Radio ${teamId}`
 export const groupLabel = (groupId: number | null) => groupId === null ? 'No group' : `Group ${groupId}`
-
-// The line beside a person's name in the list: what they carry.
-export function personLine(person: Person): string {
-    const carrying = person.team_id === null ? null : `${radioLabel(person.team_id)} · ${groupLabel(person.group_id)}`
-    if (person.placeholder) return carrying ? `Placeholder · ${carrying}` : 'Placeholder'
-    return carrying ?? 'No radio'
-}
 
 // One line of a person's history.
 export function historyLine(event: PersonEvent): string {

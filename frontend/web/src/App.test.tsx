@@ -2,8 +2,10 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, expect, test, vi } from 'vitest'
 import App from './App.tsx'
 import { MissionContext, type OpenMission } from './mission/mission.ts'
+import { PeopleContext } from './people/people.ts'
 import { SearchAreaContext, type SearchArea } from './searchArea/searchArea.ts'
 import SettingsProvider from './settings/SettingsProvider.tsx'
+import { PEOPLE } from './teams/sample.ts'
 
 // A pretend MapLibre map. It records zoom presses, and a test can move it to another zoom.
 // vi.hoisted makes it before the stand-ins below, which use it.
@@ -508,4 +510,21 @@ test('if the settings cannot be read, the frame draws with the starting values a
 
     expect(picked('Miles and feet')).toBe(true)
     expect(screen.getByText('The settings could not be loaded, so the starting values are shown.')).toBeTruthy()
+})
+
+// The People panel
+
+test("the People panel's sort is kept while the panel is closed", () => {
+    render(
+        <MissionContext value={{ mission: BEAR_CREEK, loadFailed: false, run: async () => '' }}>
+            <PeopleContext value={{ roster: [], people: PEOPLE, radios: [], groups: [], run: async () => '' }}>
+                <App />
+            </PeopleContext>
+        </MissionContext>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'People' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sort by first name' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close panel' }))
+    fireEvent.click(screen.getByRole('button', { name: 'People' }))
+    expect(screen.getByRole('button', { name: 'Sort by first name' }).getAttribute('aria-pressed')).toBe('true')
 })
