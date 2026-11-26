@@ -46,9 +46,9 @@ const ticked = () => screen.getAllByRole('checkbox').filter((box) => (box as HTM
 test('the panel lists each group with its teams, then the teams with no group', () => {
     show()
     expect(rows('Group 1')).toEqual([
-        'Radio 1Marcus Ibarra, Tessa LindqvistLast position 4:19 amEdit', 'Radio 2Priya RamanLast position 4:18 amEdit'])
-    expect(rows('Group 2')).toEqual(['Radio 7Ana MoralesLast position 4:17 amEdit'])
-    expect(rows('No group')).toEqual(['Radio 4Diego AlasNo position yetEdit'])
+        'Radio 12 searchersLast position 4:19 amEdit', 'Radio 21 searcherLast position 4:18 amEdit'])
+    expect(rows('Group 2')).toEqual(['Radio 71 searcherLast position 4:17 amEdit'])
+    expect(rows('No group')).toEqual(['Radio 41 searcherNo position yetEdit'])
     // A group with no teams stays listed.
     expect(screen.getByRole('button', { name: 'Group 3 · no teams' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Group 1 · S4' })).toBeTruthy()
@@ -59,6 +59,24 @@ test('only searcher radios with someone on them are teams', () => {
     expect(screen.queryByText('Radio 5')).toBeNull()  // nobody on it
     expect(screen.queryByText('Radio 6')).toBeNull()  // the relay
     expect(screen.queryByText('Radio 8')).toBeNull()  // the command post radio
+})
+
+test("a team's arrow shows its searchers' names, one per line, and hides them again, without selecting the team", () => {
+    const onPick = show()
+    const arrow = () => screen.getByRole('button', { name: 'Names on Radio 1' })
+    expect(arrow().getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByText('Marcus Ibarra')).toBeNull()
+
+    fireEvent.click(arrow())
+    expect(arrow().getAttribute('aria-expanded')).toBe('true')
+    // Each name is a line of its own, in place of the count.
+    expect(screen.getByText('Marcus Ibarra')).toBeTruthy()
+    expect(screen.getByText('Tessa Lindqvist')).toBeTruthy()
+    expect(rows('Group 1')[0]).toBe('Radio 1Marcus IbarraTessa LindqvistLast position 4:19 amEdit')
+    expect(onPick).not.toHaveBeenCalled()
+
+    fireEvent.click(arrow())
+    expect(rows('Group 1')[0]).toBe('Radio 12 searchersLast position 4:19 amEdit')
 })
 
 test('pressing a team selects it, and the selected team is marked', () => {
@@ -83,7 +101,8 @@ test('with no teams the panel says how to make one, and Add Group waits for a te
 
 test('a session that has ended shows its teams and nothing to change them with', () => {
     show(arizona('ended'))
-    expect(rows('Group 2')).toEqual(['Radio 7Ana MoralesLast position 4:17 am'])
+    expect(rows('Group 2')).toEqual(['Radio 71 searcherLast position 4:17 am'])
+    expect(screen.getByRole('button', { name: 'Names on Radio 7' })).toBeTruthy()  // the names can still be shown
     expect(screen.queryByRole('button', { name: 'Add Team' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Add Group' })).toBeNull()
 })

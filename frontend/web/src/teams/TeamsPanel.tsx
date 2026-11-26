@@ -1,3 +1,4 @@
+import { IconChevronDown, IconChevronRight } from '@tabler/icons-react'
 import { useState } from 'react'
 import Button from '../frame/Button.tsx'
 import { HEADING } from '../mission/MissionList.tsx'
@@ -7,7 +8,7 @@ import { groupLabel, radioLabel } from '../people/peopleWords.ts'
 import GroupForm from './GroupForm.tsx'
 import TeamForm from './TeamForm.tsx'
 import type { Group, Radio } from './teams.ts'
-import { carriedBy, groupColor, groupLine, lastPosition, teamsOf } from './teamWords.ts'
+import { groupColor, groupLine, lastPosition, teamsOf } from './teamWords.ts'
 
 const NOTE = 'px-4 pt-3 font-medium text-muted'  // a line said in place of the list
 
@@ -150,23 +151,41 @@ type RowProps = {
     onEdit?: () => void     // left out: the session cannot be changed
 }
 
-// One team: its radio, who carries it, and the time of its newest position.
+// One team: its radio, how many searchers carry it, and the time of its newest position.
+// Its arrow shows the searchers' names in place of the count, one per line. The arrow and
+// Edit sit at the row's top right, so showing the names does not move them.
 function TeamRow({ radio, zone, selected, onPick, onEdit }: RowProps) {
     const name = radioLabel(radio.id)
+    const [open, setOpen] = useState(false)  // the names are shown
+    const count = radio.people.length
     return (
-        <li className={`flex items-center gap-2 pr-4 ${selected ? 'bg-strip' : 'hover:bg-strip'}`}>
+        <li className={`relative ${selected ? 'bg-strip' : 'hover:bg-strip'}`}>
             <button
                 type="button"
                 aria-label={name}
                 aria-current={selected ? true : undefined}
                 onClick={onPick}
-                className="flex min-w-0 flex-1 cursor-pointer flex-col py-1.5 pl-4 text-left"
+                className={`flex w-full cursor-pointer flex-col py-1.5 pl-4 text-left ${onEdit ? 'pr-24' : 'pr-12'}`}
             >
                 <span className="text-input">{name}</span>
-                <span className="font-medium">{carriedBy(radio)}</span>
+                {open
+                    ? radio.people.map((person) => <span key={person.id} className="font-medium">{person.name}</span>)
+                    : <span className="font-medium">{count} {count === 1 ? 'searcher' : 'searchers'}</span>}
                 <span className="font-medium text-muted">{lastPosition(radio, zone)}</span>
             </button>
-            {onEdit && <Button aria-label={`Edit ${name}`} onClick={onEdit} className="h-6.5 px-2">Edit</Button>}
+            <div className="absolute top-1.5 right-4 flex items-center gap-2">
+                <button
+                    type="button"
+                    aria-label={`Names on ${name}`}
+                    aria-expanded={open}
+                    title={open ? 'Hide names' : 'Show names'}
+                    onClick={() => setOpen(!open)}
+                    className="flex size-6.5 cursor-pointer items-center justify-center rounded-control hover:bg-strip"
+                >
+                    {open ? <IconChevronDown size={14} stroke={1.75} aria-hidden /> : <IconChevronRight size={14} stroke={1.75} aria-hidden />}
+                </button>
+                {onEdit && <Button aria-label={`Edit ${name}`} onClick={onEdit} className="h-6.5 px-2">Edit</Button>}
+            </div>
         </li>
     )
 }
