@@ -1,15 +1,12 @@
 import { IconChevronDown, IconChevronRight } from '@tabler/icons-react'
 import { useState } from 'react'
-import type { LayerGroup, TrailUse } from '../map/styleChoices'
+import type { LayerGroup } from '../map/styleChoices'
 import { MISSION_LAYERS, type LayerChoice, type MissionLayerChoices, type MissionLayerId } from './missionLayers.ts'
 
 type Props = {
     groups: LayerGroup[]
     hidden: string[]                          // the layer groups the user has hidden
     setHidden: (hidden: string[]) => void
-    trailUses: TrailUse[]
-    pickedUses: string[]                      // the trail uses ticked; none ticked: all trails
-    setPickedUses: (pickedUses: string[]) => void
     missionLayers: MissionLayerChoices        // how each mission layer is drawn
     setMissionLayers: (missionLayers: MissionLayerChoices) => void
 }
@@ -17,9 +14,8 @@ type Props = {
 // The contents of the Layers panel. First the mission layers, which the app draws over the
 // map: each has a checkbox, and an arrow that opens its opacity slider. Then the basemap:
 // checkboxes that hide and show groups of map layers (each layer's metadata.group in the
-// style), and under Trails, checkboxes that narrow the trails to the ones open to any
-// ticked use.
-function LayersPanel({ groups, hidden, setHidden, trailUses, pickedUses, setPickedUses, missionLayers, setMissionLayers }: Props) {
+// style), Trails among them.
+function LayersPanel({ groups, hidden, setHidden, missionLayers, setMissionLayers }: Props) {
     const [openSlider, setOpenSlider] = useState<MissionLayerId | null>(null)  // one slider is open at a time
     const change = (id: MissionLayerId, choice: Partial<LayerChoice>) =>
         setMissionLayers({ ...missionLayers, [id]: { ...missionLayers[id], ...choice } })
@@ -68,25 +64,12 @@ function LayersPanel({ groups, hidden, setHidden, trailUses, pickedUses, setPick
             })}
             <Heading>Basemap</Heading>
             {groups.map((group) => (
-                <div key={group.id}>
-                    <CheckRow
-                        label={group.label}
-                        checked={!hidden.includes(group.id)}
-                        onChange={(checked) => setHidden(withOrWithout(hidden, group.id, !checked))}
-                    />
-                    {group.id === 'trails' && (
-                        <div className="pb-1 pl-6">
-                            {trailUses.map((use) => (
-                                <CheckRow
-                                    key={use.id}
-                                    label={use.label}
-                                    checked={pickedUses.includes(use.id)}
-                                    onChange={(checked) => setPickedUses(withOrWithout(pickedUses, use.id, checked))}
-                                />
-                            ))}
-                        </div>
-                    )}
-                </div>
+                <CheckRow
+                    key={group.id}
+                    label={group.label}
+                    checked={!hidden.includes(group.id)}
+                    onChange={(checked) => setHidden(withOrWithout(hidden, group.id, !checked))}
+                />
             ))}
         </div>
     )

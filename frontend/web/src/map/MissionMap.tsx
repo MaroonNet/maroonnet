@@ -1,4 +1,4 @@
-import { setWorkerUrl, type FilterSpecification, type StyleSpecification } from "maplibre-gl"
+import { setWorkerUrl, type StyleSpecification } from "maplibre-gl"
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import { useEffect, useRef, type ReactNode } from 'react'
 import Map, { type MapRef } from 'react-map-gl/maplibre'
@@ -7,7 +7,7 @@ import { sendError } from '../diagnostics/errorLog'
 import { INITIAL_VIEW, MAX_ZOOM } from "./config"
 import { style, styleError } from './mapStyle'
 import { MAP_ID, useMissionMap } from './missionMap'
-import { hideGroups, keepAdded, narrowTrails, type StyleMetadata } from './styleChoices'
+import { hideGroups, keepAdded } from './styleChoices'
 
 setWorkerUrl(workerUrl)
 
@@ -15,7 +15,6 @@ let tileErrorSent = false  // a tile failure repeats for every tile, so only the
 
 type Props = {
     hidden: string[]        // the layer groups the user has hidden
-    pickedUses: string[]    // the trail uses ticked; none ticked: all trails
     children?: ReactNode    // what is drawn on the map: mission layers and the tools' shapes
 }
 
@@ -30,7 +29,7 @@ function whenMapExists(ref: MapRef | null) {
 
 // The map. It puts itself on the shared board under MAP_ID, where the pieces outside it
 // find it (useMissionMap).
-function MissionMap({ hidden, pickedUses, children }: Props) {
+function MissionMap({ hidden, children }: Props) {
     if (!style) {
         return (
             <p style={{ padding: 16, font: '14px system-ui, sans-serif' }}>
@@ -59,7 +58,7 @@ function MissionMap({ hidden, pickedUses, children }: Props) {
                 sendError('map', e.error)
             }}
         >
-            <LayerChoices base={style} hidden={hidden} pickedUses={pickedUses} />
+            <LayerChoices base={style} hidden={hidden} />
             {children}
         </Map>
     )
@@ -68,30 +67,25 @@ function MissionMap({ hidden, pickedUses, children }: Props) {
 type LayerChoicesProps = {
     base: StyleSpecification    // the backend's style
     hidden: string[]
-    pickedUses: string[]
 }
 
 // Applies the Layers panel's choices to the map. It draws nothing itself. Each time a choice
 // changes it hands the map a copy of the style with the choices made, and MapLibre changes
 // only what differs. keepAdded puts back what was added to the map since it loaded (a tool's
 // drawing, the mission's layers), which MapLibre would otherwise take away.
-function LayerChoices({ base, hidden, pickedUses }: LayerChoicesProps) {
+function LayerChoices({ base, hidden }: LayerChoicesProps) {
     const map = useMissionMap()
     const untouched = useRef(true)  // no choice has been made yet, so the map draws the style as it came
 
     useEffect(() => {
         if (!map) return
-        if (untouched.current && !hidden.length && !pickedUses.length) return
+        if (untouched.current && !hidden.length) return
         untouched.current = false
-        const metadata = base.metadata as StyleMetadata  // the backend always sets it
-        // A trail open to any ticked use is drawn.
-        const pickedFilters = metadata.trail_uses.filter((use) => pickedUses.includes(use.id)).map((use) => use.filter)
-        const trailFilter = pickedFilters.length ? ['any', ...pickedFilters] as FilterSpecification : undefined
-        map.setStyle(narrowTrails(hideGroups(base, hidden), trailFilter), {
+        map.setStyle(hideGroups(base, hidden), {
             diff: true,
             transformStyle: (previous, next) => keepAdded(base, previous, next),
         })
-    }, [map, base, hidden, pickedUses])
+    }, [map, base, hidden])
 
     return null
 }

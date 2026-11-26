@@ -28,9 +28,9 @@ const fakeMap = vi.hoisted(() => {
 // The box prints the lists the map was handed, so a test can read which layers it was told
 // to hide.
 vi.mock('./map/MissionMap.tsx', () => {
-    type Props = { hidden: string[], pickedUses: string[] }
-    function StandInMap({ hidden, pickedUses }: Props) {
-        return <div data-testid="map">{JSON.stringify({ hidden, pickedUses })}</div>
+    type Props = { hidden: string[] }
+    function StandInMap({ hidden }: Props) {
+        return <div data-testid="map">{JSON.stringify({ hidden })}</div>
     }
     return { default: StandInMap }
 })
@@ -46,7 +46,8 @@ vi.mock('./map/drawCustomShape.ts', () => ({
     drawCustomShape: () => ({ undo() {}, redo() {}, close() {}, discard() {}, stop() {} }),
 }))
 
-// The style comes from the backend too. This one lists two layer groups and two trail uses.
+// The style comes from the backend too. This one lists two layer groups and two trail uses,
+// as the backend's does; the app does not show the trail uses.
 vi.mock('./map/mapStyle.ts', () => ({
     styleError: '',
     style: {
@@ -60,7 +61,7 @@ vi.mock('./map/mapStyle.ts', () => ({
     },
 }))
 
-function handedToMap(): { hidden: string[], pickedUses: string[] } {
+function handedToMap(): { hidden: string[] } {
     return JSON.parse(screen.getByTestId('map').textContent!)
 }
 
@@ -155,22 +156,22 @@ test('unticking a layer group in the Layers panel tells the map to hide it', () 
     expect(handedToMap().hidden).toEqual([])
 })
 
-test('the Layers panel lists every layer group ticked, and the trail uses unticked', () => {
+test('the Layers panel lists every layer group ticked, with one checkbox for all trails and none for trail uses', () => {
     render(<App />)
     openLayers()
     expect(screen.getByRole('heading', { name: 'Basemap' })).toBeTruthy()
     const ticked = (name: string) => (screen.getByRole('checkbox', { name }) as HTMLInputElement).checked
     expect(ticked('Trails')).toBe(true)
     expect(ticked('Contours')).toBe(true)
-    expect(ticked('Hiking allowed')).toBe(false)
-    expect(ticked('Horse allowed')).toBe(false)
+    expect(screen.queryByRole('checkbox', { name: 'Hiking allowed' })).toBeNull()
+    expect(screen.queryByRole('checkbox', { name: 'Horse allowed' })).toBeNull()
 })
 
-test('ticking a trail use tells the map to narrow the trails to it', () => {
+test('unticking Trails hides all the trails', () => {
     render(<App />)
     openLayers()
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Horse allowed' }))
-    expect(handedToMap().pickedUses).toEqual(['horse'])
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Trails' }))
+    expect(handedToMap().hidden).toEqual(['trails'])
 })
 
 test('the choices are kept while the panel is closed', () => {

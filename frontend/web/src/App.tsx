@@ -60,10 +60,9 @@ function App() {
   const [openPanel, setOpenPanel] = useState<PanelId | null>(null)  // one panel is open at a time
   const [tool, setTool] = useState<ToolId>('select')  // the picked map tool
   const [sectorShape, setSectorShape] = useState<SectorShape>('rectangle')  // what Draw Sector draws; kept until changed
-  // The Layers panel changes these two lists and the map draws from them. They are held here
-  // so the choices are kept while the panel is closed.
+  // The Layers panel changes this list and the map draws from it. It is held here so the
+  // choices are kept while the panel is closed.
   const [hidden, setHidden] = useState<string[]>([])  // the layer groups the user has hidden
-  const [pickedUses, setPickedUses] = useState<string[]>([])  // the trail uses ticked; none: all trails
   // The same for the mission layers: whether each shows, and how solid it is drawn.
   const [missionLayers, setMissionLayers] = useState(AS_OPENED)
   // The spot under the toolbar where the tool in use draws its hint line, and the spot at the
@@ -167,9 +166,6 @@ function App() {
               groups={layerLists.groups}
               hidden={hidden}
               setHidden={setHidden}
-              trailUses={layerLists.trail_uses}
-              pickedUses={pickedUses}
-              setPickedUses={setPickedUses}
               missionLayers={missionLayers}
               setMissionLayers={setMissionLayers}
             />
@@ -184,7 +180,7 @@ function App() {
         </Panel>
       )}
       <main className="relative z-0 min-w-0 flex-1">
-        <MissionMap hidden={hidden} pickedUses={pickedUses}>
+        <MissionMap hidden={hidden}>
           {/* First, so it lies under everything else drawn for the mission. */}
           <HeatmapOnMap layer={missionLayers.heatmap} />
           <SearchAreaOutline />

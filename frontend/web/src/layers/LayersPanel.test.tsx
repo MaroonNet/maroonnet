@@ -14,9 +14,6 @@ function show(missionLayers: MissionLayerChoices = AS_OPENED) {
             groups={[{ id: 'contours', label: 'Contours' }]}
             hidden={[]}
             setHidden={() => {}}
-            trailUses={[]}
-            pickedUses={[]}
-            setPickedUses={() => {}}
             missionLayers={missionLayers}
             setMissionLayers={setMissionLayers}
         />,
